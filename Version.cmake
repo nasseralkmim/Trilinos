@@ -11,7 +11,7 @@ SET(Trilinos_VERSION_STRING "16.1.0-dev")
 SET(Trilinos_ENABLE_DEVELOPMENT_MODE_DEFAULT ON) # Change to 'OFF' for a release
 
 # Used by testing scripts and should not be used elsewhere
-SET(Trilinos_REPOSITORY_BRANCH "develop" CACHE INTERNAL "")
+SET(Trilinos_REPOSITORY_BRANCH "trilinos-release-13-4-branch" CACHE INTERNAL "")
 SET(Trilinos_EXTRAREPOS_BRANCH "master" CACHE INTERNAL "")
 SET(Trilinos_TESTING_TRACK "" CACHE INTERNAL "")
 
