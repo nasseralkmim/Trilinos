@@ -11,6 +11,7 @@ BlockedCoarseMapFactory
 BlockedCoordinatesTransferFactory
 BlockedDirectSolver
 BlockedGaussSeidelSmoother
+ModBlockedGaussSeidelSmoother
 BlockedJacobiSmoother
 BlockedPFactory
 BlockedRAPFactory

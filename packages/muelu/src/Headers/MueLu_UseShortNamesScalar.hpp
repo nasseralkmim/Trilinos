@@ -41,6 +41,9 @@ typedef MueLu::BlockedDirectSolver<Scalar,LocalOrdinal,GlobalOrdinal,Node> Block
 #ifdef MUELU_BLOCKEDGAUSSSEIDELSMOOTHER_SHORT
 typedef MueLu::BlockedGaussSeidelSmoother<Scalar,LocalOrdinal,GlobalOrdinal,Node> BlockedGaussSeidelSmoother;
 #endif
+#ifdef MUELU_MODBLOCKEDGAUSSSEIDELSMOOTHER_SHORT
+typedef MueLu::ModBlockedGaussSeidelSmoother<Scalar,LocalOrdinal,GlobalOrdinal,Node> ModBlockedGaussSeidelSmoother;
+#endif
 #ifdef MUELU_BLOCKEDJACOBISMOOTHER_SHORT
 typedef MueLu::BlockedJacobiSmoother<Scalar,LocalOrdinal,GlobalOrdinal,Node> BlockedJacobiSmoother;
 #endif
