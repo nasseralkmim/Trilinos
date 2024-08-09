@@ -88,6 +88,7 @@ namespace MueLu {
     validParamList->set< RCP<const FactoryBase> >("A",                  Teuchos::null, "Generating factory of the matrix A");
     validParamList->set< Scalar >                ("Damping factor",     1.0, "Damping/Scaling factor in BGS");
     validParamList->set< LocalOrdinal >          ("Sweeps",             1, "Number of BGS sweeps (default = 1)");
+    validParamList->set<bool>("UseSIMPLE", false, "Use SIMPLE to correct displacement field (default = false)");
 
     return validParamList;
   }
