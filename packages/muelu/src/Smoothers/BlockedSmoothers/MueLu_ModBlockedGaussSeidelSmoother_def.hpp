@@ -115,6 +115,9 @@ namespace MueLu {
 
   template <class Scalar,class LocalOrdinal, class GlobalOrdinal, class Node>
   void ModBlockedGaussSeidelSmoother<Scalar, LocalOrdinal, GlobalOrdinal, Node>::DeclareInput(Level &currentLevel) const {
+    // only works for 3x3 block
+    TEUCHOS_TEST_FOR_EXCEPTION(FactManager_.size() != 3, Exceptions::RuntimeError,"MueLu::ModBlockedGaussSeidelSmoother::DeclareInput: You have to declare two FactoryManagers with a \"Smoother\" object: One for predicting the primary variable and one for the SchurComplement system. The smoother for the SchurComplement system needs a SchurComplementFactory as input for variable \"A\". make sure that you use the same proper damping factors for omega both in the SchurComplementFactory and in the SIMPLE smoother!");
+    
     //this->Input(currentLevel, "A");
     // TODO: check me: why is this->Input not freeing properly A in release mode?
     currentLevel.DeclareInput("A",this->GetFactory("A").get());
