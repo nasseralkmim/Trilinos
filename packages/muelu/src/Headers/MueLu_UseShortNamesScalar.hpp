@@ -50,6 +50,9 @@ using BlockedDirectSolver [[maybe_unused]] = MueLu::BlockedDirectSolver<Scalar, 
 #ifdef MUELU_BLOCKEDGAUSSSEIDELSMOOTHER_SHORT
 using BlockedGaussSeidelSmoother [[maybe_unused]] = MueLu::BlockedGaussSeidelSmoother<Scalar, LocalOrdinal, GlobalOrdinal, Node>;
 #endif
+#ifdef MUELU_MODBLOCKEDGAUSSSEIDELSMOOTHER_SHORT
+typedef MueLu::ModBlockedGaussSeidelSmoother<Scalar,LocalOrdinal,GlobalOrdinal,Node> ModBlockedGaussSeidelSmoother;
+#endif
 #ifdef MUELU_BLOCKEDJACOBISMOOTHER_SHORT
 using BlockedJacobiSmoother [[maybe_unused]] = MueLu::BlockedJacobiSmoother<Scalar, LocalOrdinal, GlobalOrdinal, Node>;
 #endif
