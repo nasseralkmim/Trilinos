@@ -44,9 +44,10 @@
 //
 // @HEADER
 
-#ifndef MUELU_BLOCKEDGAUSSSEIDELSMOOTHER_DEF_HPP_
-#define MUELU_BLOCKEDGAUSSSEIDELSMOOTHER_DEF_HPP_
+#ifndef MUELU_MODBLOCKEDGAUSSSEIDELSMOOTHER_DEF_HPP_
+#define MUELU_MODBLOCKEDGAUSSSEIDELSMOOTHER_DEF_HPP_
 
+#include "MueLu_CoupledRBMFactory_decl.hpp"
 #include "Teuchos_ArrayViewDecl.hpp"
 #include "Teuchos_ScalarTraits.hpp"
 
@@ -58,6 +59,8 @@
 #include <Xpetra_ReorderedBlockedCrsMatrix.hpp>
 #include <Xpetra_ReorderedBlockedMultiVector.hpp>
 #include <Xpetra_MultiVectorFactory.hpp>
+#include <iostream>
+#include <ostream>
 
 #include "MueLu_ModBlockedGaussSeidelSmoother_decl.hpp"
 #include "MueLu_Level.hpp"
@@ -195,6 +198,15 @@ namespace MueLu {
     }
 #endif
     SC zero = Teuchos::ScalarTraits<SC>::zero(), one = Teuchos::ScalarTraits<SC>::one();
+    
+    // extract parameters from internal parameter list
+    const ParameterList & pL = Factory::GetParameterList();
+    LocalOrdinal nSweeps = pL.get<LocalOrdinal>("Sweeps");
+    Scalar omega = pL.get<Scalar>("Damping factor");
+    
+    // The boolean flags check whether we use Thyra or Xpetra style GIDs
+    bool bRangeThyraMode = rangeMapExtractor_->getThyraMode(); //  && (Teuchos::rcp_dynamic_cast<BlockedCrsMatrix>(F_) == Teuchos::null);
+    bool bDomainThyraMode = domainMapExtractor_->getThyraMode(); // && (Teuchos::rcp_dynamic_cast<BlockedCrsMatrix>(F_) == Teuchos::null);
 
     // Input variables used for the rest of the algorithm
     RCP<MultiVector> rcpX = Teuchos::rcpFromRef(X);
@@ -284,45 +296,66 @@ namespace MueLu {
     // Throughout the rest of the algorithm rcpX and rcpB are used for solution vector and RHS
 
     RCP<MultiVector> residual = MultiVectorFactory::Build(rcpB->getMap(), rcpB->getNumVectors());
+    RCP<BlockedMultiVector> bresidual = Teuchos::rcp_dynamic_cast<BlockedMultiVector>(residual);
+    RCP<MultiVector> r1 = bresidual->getMultiVector(0,bRangeThyraMode);
+    RCP<MultiVector> r2 = bresidual->getMultiVector(1,bRangeThyraMode);
+    RCP<MultiVector> r3 = bresidual->getMultiVector(2,bRangeThyraMode);
+
+    // helper vector 1
+    RCP<MultiVector> xtilde = MultiVectorFactory::Build(rcpX->getMap(), rcpX->getNumVectors());
+    RCP<BlockedMultiVector> bxtilde = Teuchos::rcp_dynamic_cast<BlockedMultiVector>(xtilde);
+    RCP<MultiVector> xtilde1 = bxtilde->getMultiVector(0, bDomainThyraMode);
+    RCP<MultiVector> xtilde2 = bxtilde->getMultiVector(1, bDomainThyraMode);
+    RCP<MultiVector> xtilde3 = bxtilde->getMultiVector(2, bDomainThyraMode);
+
+    // helper vector 2
+    RCP<MultiVector> xhat = MultiVectorFactory::Build(rcpX->getMap(), rcpX->getNumVectors());
+    RCP<BlockedMultiVector> bxhat = Teuchos::rcp_dynamic_cast<BlockedMultiVector>(xhat);
+    RCP<MultiVector> xhat1 = bxhat->getMultiVector(0, bDomainThyraMode);
+    RCP<MultiVector> xhat2 = bxhat->getMultiVector(1, bDomainThyraMode);
+    RCP<MultiVector> xhat3 = bxhat->getMultiVector(2, bDomainThyraMode);
+
     RCP<MultiVector> tempres = MultiVectorFactory::Build(rcpB->getMap(), rcpB->getNumVectors());
-
-    // extract parameters from internal parameter list
-    const ParameterList & pL = Factory::GetParameterList();
-    LocalOrdinal nSweeps = pL.get<LocalOrdinal>("Sweeps");
-    Scalar omega = pL.get<Scalar>("Damping factor");
-
 
     // Clear solution from previos V cycles in case it is still stored
     if( InitialGuessIsZero==true )
       rcpX->putScalar(Teuchos::ScalarTraits<Scalar>::zero());
 
-
-    // outer Richardson loop
+    // incrementally improve solution vector X
     for (LocalOrdinal run = 0; run < nSweeps; ++run) {
-      // one BGS sweep
-      // loop over all block rows
-      for(size_t i = 0; i<Inverse_.size(); i++) {
+      // 1. calculate current residual = B - A rcpX
+      residual->update(one, *rcpB, zero); // residual = B
+      if(InitialGuessIsZero == false || run > 0)
+        A_->apply(*rcpX, *residual, Teuchos::NO_TRANS, -one, one);
 
-        // calculate block residual r = B-A*X
-        // note: A_ is the full blocked operator
-        residual->update(1.0,*rcpB,0.0); // r = B
-        if(InitialGuessIsZero == false || i > 0 || run > 0)
-          bA->bgs_apply(*rcpX, *residual, i, Teuchos::NO_TRANS, -1.0, 1.0);
+      // 2. Solve A_{11} \Delta \tilde{x}_1 = r_1
+      xtilde1->putScalar(zero);
+      xtilde2->putScalar(zero);
+      xtilde3->putScalar(zero);
+      Inverse_.at(0)->Apply(*xtilde1, *r1);
 
-        // extract corresponding subvectors from X and residual
-        bool bRangeThyraMode =  rangeMapExtractor_->getThyraMode();
-        bool bDomainThyraMode = domainMapExtractor_->getThyraMode();
-        Teuchos::RCP<MultiVector> Xi = domainMapExtractor_->ExtractVector(rcpX, i, bDomainThyraMode);
-        Teuchos::RCP<MultiVector> ri = rangeMapExtractor_->ExtractVector(residual, i, bRangeThyraMode);
-        Teuchos::RCP<MultiVector> tXi = domainMapExtractor_->getVector(i, X.getNumVectors(), bDomainThyraMode);
+      // 3. Compute the RHS for the second sub-problem using the solution from 2.
+      // RHS_2 = r_2 - A_{21} \Delta \tilde{x}_1
+      RCP<MultiVector> schurCompRHS = rangeMapExtractor_->getVector(1, rcpB->getNumVectors(), bRangeThyraMode);
+      bA->getMatrix(1, 0)->apply(*xtilde1, *schurCompRHS);
+      schurCompRHS->update(one, *r2, -one);
 
-        // apply solver/smoother
-        Inverse_.at(i)->Apply(*tXi, *ri, false);
+      // 4. Solve this second problem considering specific Schur complement approximation by S = A_{22}
+      // A_{22} \tilde{x}_2 = RHS_2
+      Inverse_.at(1)->Apply(*xtilde2, *schurCompRHS);
 
-        // update vector
-        Xi->update(omega,*tXi,1.0);  // X_{i+1} = X_i + omega \Delta X_i
+      // 5. Solve the third problem considering it independent from the others
+      Inverse_.at(2)->Apply(*xtilde3, *r3);
 
-      }
+      // 6. Scale xtilde with omega (from Richardson) and store it
+      // \hat{x} = w \Delta \tilde{x}
+      xhat1->update(omega, *xtilde1, zero);
+      xhat2->update(omega, *xtilde2, zero);
+      xhat3->update(omega, *xtilde3, zero);
+
+      // 7. Update solution vector
+      // x^{i+1} = x^{i} + w \Delta \tilde{x}
+      rcpX->update(one, *bxhat, one);
     }
 
     if (bCopyResultX == true) {
@@ -369,4 +402,4 @@ namespace MueLu {
 
 } // namespace MueLu
 
-#endif /* MUELU_BLOCKEDGAUSSSEIDELSMOOTHER_DEF_HPP_ */
+#endif /* MUELU_MODBLOCKEDGAUSSSEIDELSMOOTHER_DEF_HPP_ */

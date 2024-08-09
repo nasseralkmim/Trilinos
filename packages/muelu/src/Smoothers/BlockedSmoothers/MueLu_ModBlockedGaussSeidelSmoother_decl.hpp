@@ -44,8 +44,8 @@
 //
 // @HEADER
 
-#ifndef MUELU_BLOCKEDGAUSSSEIDELSMOOTHER_DECL_HPP_
-#define MUELU_BLOCKEDGAUSSSEIDELSMOOTHER_DECL_HPP_
+#ifndef MUELU_MODBLOCKEDGAUSSSEIDELSMOOTHER_DECL_HPP_
+#define MUELU_MODBLOCKEDGAUSSSEIDELSMOOTHER_DECL_HPP_
 
 #include "MueLu_ConfigDefs.hpp"
 
@@ -57,7 +57,7 @@
 #include <Xpetra_MultiVectorFactory_fwd.hpp>
 #include <Xpetra_MapExtractor_fwd.hpp>
 
-#include "MueLu_BlockedGaussSeidelSmoother_fwd.hpp"
+#include "MueLu_ModBlockedGaussSeidelSmoother_fwd.hpp"
 
 #include "MueLu_SmootherPrototype.hpp"
 #include "MueLu_FactoryBase_fwd.hpp"
@@ -112,12 +112,12 @@ namespace MueLu {
             class LocalOrdinal = typename SmootherPrototype<Scalar>::local_ordinal_type,
             class GlobalOrdinal = typename SmootherPrototype<Scalar, LocalOrdinal>::global_ordinal_type,
             class Node = typename SmootherPrototype<Scalar, LocalOrdinal, GlobalOrdinal>::node_type>
-  class CustomBBGSSmoother :
+  class ModBlockedGaussSeidelSmoother :
     public SmootherPrototype<Scalar,LocalOrdinal,GlobalOrdinal,Node>
   {
     typedef Xpetra::MapExtractor<Scalar, LocalOrdinal, GlobalOrdinal, Node> MapExtractorClass;
 
-#undef MUELU_BLOCKEDGAUSSSEIDELSMOOTHER_SHORT
+#undef MUELU_MODBLOCKEDGAUSSSEIDELSMOOTHER_SHORT
 #include "MueLu_UseShortNames.hpp"
 
   public:
@@ -127,10 +127,10 @@ namespace MueLu {
 
     /*! @brief Constructor
     */
-    CustomBBGSSmoother();
+    ModBlockedGaussSeidelSmoother();
 
     //! Destructor
-    virtual ~CustomBBGSSmoother();
+    virtual ~ModBlockedGaussSeidelSmoother();
     //@}
 
     //! Input
@@ -216,6 +216,6 @@ namespace MueLu {
 
 } // namespace MueLu
 
-#define MUELU_BLOCKEDGAUSSSEIDELSMOOTHER_SHORT
+#define MUELU_MODBLOCKEDGAUSSSEIDELSMOOTHER_SHORT
 
-#endif /* MUELU_BLOCKEDGAUSSSEIDELSMOOTHER_DECL_HPP_ */
+#endif /* MUELU_MODBLOCKEDGAUSSSEIDELSMOOTHER_DECL_HPP_ */
