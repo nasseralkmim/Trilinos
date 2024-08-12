@@ -61,6 +61,7 @@
 #include <Xpetra_MultiVectorFactory.hpp>
 #include <iostream>
 #include <ostream>
+#include <sstream>
 
 #include "MueLu_ModBlockedGaussSeidelSmoother_decl.hpp"
 #include "MueLu_Level.hpp"
@@ -171,6 +172,15 @@ namespace MueLu {
       bIsBlockedOperator_.push_back(Teuchos::rcp_dynamic_cast<BlockedCrsMatrix>(Aii)!=Teuchos::null);
     }
 
+    RCP<Vector> diagA11Vector = VectorFactory::Build(bA->getMatrix(0, 0)->getRowMap());
+
+    const ParameterList & pL = Factory::GetParameterList();
+    bool useSIMPLE = pL.get<bool>("UseSIMPLE");
+    if (useSIMPLE) {
+      bA->getMatrix(0, 0)->getLocalDiagCopy(*diagA11Vector);
+      diagA11inv_ = Utilities::GetInverse(diagA11Vector);
+    }
+        
     SmootherPrototype::IsSetup(true);
   }
 
@@ -351,11 +361,27 @@ namespace MueLu {
       // 5. Solve the third problem considering it independent from the others
       Inverse_.at(2)->Apply(*xtilde3, *r3);
 
-      // 6. Scale xtilde with omega (from Richardson) and store it
+      // 6. Scale xtilde with omega and store it
       // \hat{x} = w \Delta \tilde{x}
-      xhat1->update(omega, *xtilde1, zero);
       xhat2->update(omega, *xtilde2, zero);
       xhat3->update(omega, *xtilde3, zero);
+      
+      bool useSIMPLE = pL.get<bool>("UseSIMPLE");
+      if (useSIMPLE) {
+        // correct analogous to SIMPLE, using updated x_{2}^{i+1}
+        // x_1^{i+1} = x_1^{i} + w A_{11}^{-1} (f - A_{11}x_1^{i} - A_{12} x_2^{i+1})
+        // first, apply A_{12} to x_2^{i+1}
+        RCP<MultiVector> xhat1_temp = domainMapExtractor_->getVector(0, rcpX->getNumVectors(), bDomainThyraMode);
+        bA->getMatrix(0, 1)->apply(*xhat2, *xhat1_temp); // store result temporarely in xtilde1_temp
+        // then use a diagonal inverser approximation to compute diagA_{11}^{-1} A_{12} \Delta \tilde{x}_2
+        // since omega was already applied to \tilde{x}_2, we use 1 here
+        xhat1->elementWiseMultiply(one /*/omega*/, *diagA11inv_, *xhat1_temp, zero);
+        // finally compute \hat{x}_1 = w \Delta \tilde{x}_1 - diagA^{-1} A_{12} \Delta \tilde{x}_2
+        xhat1->update(one, *xtilde1, -one);
+
+      } else {
+        xhat1->update(omega, *xtilde1, zero);
+      }
 
       // 7. Update solution vector
       // x^{i+1} = x^{i} + w \Delta \tilde{x}
