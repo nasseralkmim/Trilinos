@@ -177,6 +177,7 @@ namespace MueLu {
     const ParameterList & pL = Factory::GetParameterList();
     bool useSIMPLE = pL.get<bool>("UseSIMPLE");
     if (useSIMPLE) {
+      *out << "Using modBGS with SIMPLE-like algorithm" << std::endl;
       bA->getMatrix(0, 0)->getLocalDiagCopy(*diagA11Vector);
       diagA11inv_ = Utilities::GetInverse(diagA11Vector);
     }
