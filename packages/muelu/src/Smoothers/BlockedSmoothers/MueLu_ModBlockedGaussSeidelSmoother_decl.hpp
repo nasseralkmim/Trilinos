@@ -196,8 +196,11 @@ namespace MueLu {
     std::vector<Teuchos::RCP<const FactoryManagerBase> > FactManager_;
 
     //! vector of smoother/solver factories
-    std::vector<Teuchos::RCP<const SmootherBase> > Inverse_;
+    std::vector<Teuchos::RCP<const SmootherBase>> Inverse_;
 
+    //! Inverse diagonal algebraic approximation to approximate displacement block A_{11}
+    Teuchos::RCP<Vector> diagA11inv_;
+    
     //! vector storing whether sub-block is a blocked operator (needed for nested blocked smoothers using Thyra GIDs)
     std::vector<bool> bIsBlockedOperator_;
 
