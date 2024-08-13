@@ -350,34 +350,28 @@ namespace MueLu {
       Inverse_.at(0)->Apply(*xtilde1, *r1);
 
       // 3. Compute the RHS for the second sub-problem using the solution from 2.
-      // RHS_2 = r_2 - A_{21} \Delta \tilde{x}_1
       RCP<MultiVector> schurCompRHS = rangeMapExtractor_->getVector(1, rcpB->getNumVectors(), bRangeThyraMode);
       bA->getMatrix(1, 0)->apply(*xtilde1, *schurCompRHS);
       schurCompRHS->update(one, *r2, -one);
 
       // 4. Solve this second problem considering specific Schur complement approximation by S = A_{22}
-      // A_{22} \tilde{x}_2 = RHS_2
       Inverse_.at(1)->Apply(*xtilde2, *schurCompRHS);
 
       // 5. Solve the third problem considering it independent from the others
       Inverse_.at(2)->Apply(*xtilde3, *r3);
 
-      // 6. Scale xtilde with omega and store it
-      // \hat{x} = w \Delta \tilde{x}
+      // 6. Scale \tilde{x} with omega and store it
+      // \hat{x}: damped correction after one iteration
       xhat2->update(omega, *xtilde2, zero);
       xhat3->update(omega, *xtilde3, zero);
       
       bool useSIMPLE = pL.get<bool>("UseSIMPLE");
       if (useSIMPLE) {
-        // correct analogous to SIMPLE, using updated x_{2}^{i+1}
-        // x_1^{i+1} = x_1^{i} + w A_{11}^{-1} (f - A_{11}x_1^{i} - A_{12} x_2^{i+1})
-        // first, apply A_{12} to x_2^{i+1}
+        // correct analogous to SIMPLE, using updated \hat{x}_2
         RCP<MultiVector> xhat1_temp = domainMapExtractor_->getVector(0, rcpX->getNumVectors(), bDomainThyraMode);
-        bA->getMatrix(0, 1)->apply(*xhat2, *xhat1_temp); // store result temporarely in xtilde1_temp
-        // then use a diagonal inverser approximation to compute diagA_{11}^{-1} A_{12} \Delta \tilde{x}_2
+        bA->getMatrix(0, 1)->apply(*xhat2, *xhat1_temp); // store result temporarily in xtilde1_temp
         // since omega was already applied to \tilde{x}_2, we use 1 here
         xhat1->elementWiseMultiply(one /*/omega*/, *diagA11inv_, *xhat1_temp, zero);
-        // finally compute \hat{x}_1 = w \Delta \tilde{x}_1 - diagA^{-1} A_{12} \Delta \tilde{x}_2
         xhat1->update(one, *xtilde1, -one);
 
       } else {
@@ -385,7 +379,6 @@ namespace MueLu {
       }
 
       // 7. Update solution vector
-      // x^{i+1} = x^{i} + w \Delta \tilde{x}
       rcpX->update(one, *bxhat, one);
     }
 
