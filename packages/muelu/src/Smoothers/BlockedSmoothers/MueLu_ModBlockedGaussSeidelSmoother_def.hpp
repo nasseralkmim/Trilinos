@@ -90,6 +90,7 @@ namespace MueLu {
     validParamList->set< Scalar >                ("Damping factor",     1.0, "Damping/Scaling factor in BGS");
     validParamList->set< LocalOrdinal >          ("Sweeps",             1, "Number of BGS sweeps (default = 1)");
     validParamList->set<bool>("UseSIMPLE", false, "Use SIMPLE to correct displacement field (default = false)");
+    validParamList->set<bool>("UseSIMPLEC", false, "Use SIMPLEC to correct displacement field (default = false)");
 
     return validParamList;
   }
@@ -181,6 +182,14 @@ namespace MueLu {
       bA->getMatrix(0, 0)->getLocalDiagCopy(*diagA11Vector);
       diagA11inv_ = Utilities::GetInverse(diagA11Vector);
     }
+    bool useSIMPLEC = pL.get<bool>("UseSIMPLEC");
+    if (useSIMPLEC) {
+      *out << "Using modBGS with SIMPLEC-like algorithm" << std::endl;
+      bA->getMatrix(0, 0)->getLocalDiagCopy(*diagA11Vector);
+      diagA11Vector = Utilities::GetLumpedMatrixDiagonal(*bA->getMatrix(0, 0));
+      diagA11inv_ = Utilities::GetInverse(diagA11Vector);
+    }
+
         
     SmootherPrototype::IsSetup(true);
   }
@@ -366,7 +375,8 @@ namespace MueLu {
       xhat3->update(omega, *xtilde3, zero);
       
       bool useSIMPLE = pL.get<bool>("UseSIMPLE");
-      if (useSIMPLE) {
+      bool useSIMPLEC = pL.get<bool>("UseSIMPLEC");
+      if (useSIMPLE || useSIMPLEC) {
         // correct analogous to SIMPLE, using updated \hat{x}_2
         RCP<MultiVector> xhat1_temp = domainMapExtractor_->getVector(0, rcpX->getNumVectors(), bDomainThyraMode);
         bA->getMatrix(0, 1)->apply(*xhat2, *xhat1_temp); // store result temporarily in xtilde1_temp
