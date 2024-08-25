@@ -174,6 +174,7 @@ namespace MueLu {
     }
 
     RCP<Vector> diagA11Vector = VectorFactory::Build(bA->getMatrix(0, 0)->getRowMap());
+    RCP<Vector> diagA22Vector = VectorFactory::Build(bA->getMatrix(1, 1)->getRowMap());
 
     const ParameterList & pL = Factory::GetParameterList();
     bool useSIMPLE = pL.get<bool>("UseSIMPLE");
@@ -181,6 +182,9 @@ namespace MueLu {
       *out << "Using modBGS with SIMPLE-like algorithm" << std::endl;
       bA->getMatrix(0, 0)->getLocalDiagCopy(*diagA11Vector);
       diagA11inv_ = Utilities::GetInverse(diagA11Vector);
+
+      bA->getMatrix(1, 1)->getLocalDiagCopy(*diagA22Vector);
+      diagA22inv_ = Utilities::GetInverse(diagA22Vector);
     }
     bool useSIMPLEC = pL.get<bool>("UseSIMPLEC");
     if (useSIMPLEC) {
@@ -188,6 +192,9 @@ namespace MueLu {
       bA->getMatrix(0, 0)->getLocalDiagCopy(*diagA11Vector);
       diagA11Vector = Utilities::GetLumpedMatrixDiagonal(*bA->getMatrix(0, 0));
       diagA11inv_ = Utilities::GetInverse(diagA11Vector);
+      bA->getMatrix(1, 1)->getLocalDiagCopy(*diagA22Vector);
+      diagA22Vector = Utilities::GetLumpedMatrixDiagonal(*bA->getMatrix(1, 1));
+      diagA22inv_ = Utilities::GetInverse(diagA22Vector);
     }
 
         
@@ -371,25 +378,38 @@ namespace MueLu {
 
       // 6. Scale \tilde{x} with omega and store it
       // \hat{x}: damped correction after one iteration
-      xhat2->update(omega, *xtilde2, zero);
       xhat3->update(omega, *xtilde3, zero);
       
       bool useSIMPLE = pL.get<bool>("UseSIMPLE");
       bool useSIMPLEC = pL.get<bool>("UseSIMPLEC");
       if (useSIMPLE || useSIMPLEC) {
-        // correct analogous to SIMPLE, using updated \hat{x}_2
-        RCP<MultiVector> xhat1_temp = domainMapExtractor_->getVector(0, rcpX->getNumVectors(), bDomainThyraMode);
-        bA->getMatrix(0, 1)->apply(*xhat2, *xhat1_temp); // store result temporarily in xtilde1_temp
+        // correct analogous to SIMPLE, using \Delta \tilde{x}_2 and \Delta \tilde{x}_3
+        RCP<MultiVector> B1_xtilde2 = domainMapExtractor_->getVector(0, rcpX->getNumVectors(), bDomainThyraMode);
+        RCP<MultiVector> C1_xtilde3 = domainMapExtractor_->getVector(0, rcpX->getNumVectors(), bDomainThyraMode);
+        RCP<MultiVector> F1_xtilde3 = domainMapExtractor_->getVector(1, rcpX->getNumVectors(), bDomainThyraMode);
+
+        // first update \Delta \tilde{x}_2 = \Delta \tilde{x}_2 - A22inv F1 \Delta \tilde{x}_3
+        bA->getMatrix(1, 2)->apply(*xhat3, *F1_xtilde3);
+        xhat2->elementWiseMultiply(one, *diagA22inv_, *F1_xtilde3, zero);
+        xhat2->update(one, *xtilde2, -one);
+
+        // use the updated xhat2 to update \Delta \tilde{x}_1
+        bA->getMatrix(0, 1)->apply(*xhat2, *B1_xtilde2);
+        bA->getMatrix(0, 2)->apply(*xhat3, *C1_xtilde3);
+
         // since omega was already applied to \tilde{x}_2, we use 1 here
-        xhat1->elementWiseMultiply(one /*/omega*/, *diagA11inv_, *xhat1_temp, zero);
-        xhat1->update(one, *xtilde1, -one);
+        xhat1->elementWiseMultiply(one /*/omega*/, *diagA11inv_, *B1_xtilde2, zero);
+        xhat1->elementWiseMultiply(one /*/omega*/, *diagA11inv_, *C1_xtilde3, one);
+        
+        xhat1->update(one, *xtilde1, -one); // \Delta \tilde{x}_1 - Ainv B_1 \Delta \tilde{x}_2
 
       } else {
+        xhat2->update(omega, *xtilde2, zero);
         xhat1->update(omega, *xtilde1, zero);
       }
 
       // 7. Update solution vector
-      rcpX->update(one, *bxhat, one);
+      rcpX->update(one, *bxhat, one); // x^{k+1} = x^{k} + xhat
     }
 
     if (bCopyResultX == true) {
