@@ -17,7 +17,6 @@
 #include "Teko_ReorderedLinearOp.hpp"
 
 #include "EpetraExt_RowMatrixOut.h"
-#include "Stratimikos_MueLuHelpers.hpp"
 
 namespace Teko {
 
@@ -184,8 +183,6 @@ void StratimikosFactory::initializePrec_Thyra(
     timer.start(true);
 
     // build library, and set request handler (user defined!)
-    Stratimikos::enableMueLu<int, int, Xpetra::EpetraNode>(*builder_);
-
     invLib_  = Teko::InverseLibrary::buildFromParameterList(paramList_->sublist("Inverse Factory Library"),builder_);
     invLib_->setRequestHandler(reqHandler_);
 
