@@ -176,6 +176,7 @@ namespace MueLu {
 
     RCP<Vector> diagA11Vector = VectorFactory::Build(bA->getMatrix(0, 0)->getRowMap());
     RCP<Vector> diagA22Vector = VectorFactory::Build(bA->getMatrix(1, 1)->getRowMap());
+    RCP<Vector> diagA33Vector = VectorFactory::Build(bA->getMatrix(2, 2)->getRowMap());
 
     const ParameterList & pL = Factory::GetParameterList();
     bool useSIMPLE = pL.get<bool>("UseSIMPLE");
@@ -201,8 +202,19 @@ namespace MueLu {
     bool useUpperTriangular = pL.get<bool>("UpperTriangular");
     if (useUpperTriangular) {
       *out << "Using modBGS with upper triangular" << std::endl;
+      if (useSIMPLE) {
+        *out << "Using modBGS with SIMPLE-like algorithm with upper triangular" << std::endl;
+        bA->getMatrix(2, 2)->getLocalDiagCopy(*diagA33Vector);
+        diagA33inv_ = Utilities::GetInverse(diagA33Vector);
+      }
+      if (useSIMPLEC) {
+        *out << "Using modBGS with SIMPLEC-like algorithm with upper triangular" << std::endl;
+        bA->getMatrix(2, 2)->getLocalDiagCopy(*diagA33Vector);
+        diagA33Vector = Utilities::GetLumpedMatrixDiagonal(*bA->getMatrix(2, 2));
+        diagA33inv_ = Utilities::GetInverse(diagA33Vector);
+      }
     }
-        
+
     SmootherPrototype::IsSetup(true);
   }
 
@@ -464,25 +476,25 @@ namespace MueLu {
         bool useSIMPLE = pL.get<bool>("UseSIMPLE");
         bool useSIMPLEC = pL.get<bool>("UseSIMPLEC");
         if (useSIMPLE || useSIMPLEC) {
-          // correct analogous to SIMPLE, using \Delta \tilde{x}_2 and \Delta \tilde{x}_3
-          RCP<MultiVector> B1_xtilde2 = domainMapExtractor_->getVector(0, rcpX->getNumVectors(), bDomainThyraMode);
-          RCP<MultiVector> C1_xtilde3 = domainMapExtractor_->getVector(0, rcpX->getNumVectors(), bDomainThyraMode);
-          RCP<MultiVector> F1_xtilde3 = domainMapExtractor_->getVector(1, rcpX->getNumVectors(), bDomainThyraMode);
+          // correct analogous to SIMPLE, using \tilde{x}_1 and \tilde{x}_2
+          RCP<MultiVector> B2_xtilde1 = domainMapExtractor_->getVector(1, rcpX->getNumVectors(), bDomainThyraMode);
+          RCP<MultiVector> C2_xtilde1 = domainMapExtractor_->getVector(2, rcpX->getNumVectors(), bDomainThyraMode);
+          RCP<MultiVector> F2_xtilde2 = domainMapExtractor_->getVector(2, rcpX->getNumVectors(), bDomainThyraMode);
 
-          // first update \Delta \tilde{x}_2 = \Delta \tilde{x}_2 - A22inv F1 \Delta \tilde{x}_3
-          bA->getMatrix(1, 2)->apply(*xhat3, *F1_xtilde3);
-          xhat2->elementWiseMultiply(one, *diagA22inv_, *F1_xtilde3, zero);
+          // first update \tilde{x}_2 = \tilde{x}_2 - A22inv B2 \tilde{x}_1
+          bA->getMatrix(1, 0)->apply(*xhat1, *B2_xtilde1);
+          xhat2->elementWiseMultiply(one, *diagA22inv_, *B2_xtilde1, zero);
           xhat2->update(one, *xtilde2, -one);
 
           // use the updated xhat2 to update \Delta \tilde{x}_1
-          bA->getMatrix(0, 1)->apply(*xhat2, *B1_xtilde2);
-          bA->getMatrix(0, 2)->apply(*xhat3, *C1_xtilde3);
+          bA->getMatrix(2, 0)->apply(*xhat1, *C2_xtilde1);
+          bA->getMatrix(2, 1)->apply(*xhat2, *F2_xtilde2);
 
           // since omega was already applied to \tilde{x}_2, we use 1 here
-          xhat1->elementWiseMultiply(one /*/omega*/, *diagA11inv_, *B1_xtilde2, zero);
-          xhat1->elementWiseMultiply(one /*/omega*/, *diagA11inv_, *C1_xtilde3, one);
+          xhat3->elementWiseMultiply(one /*/omega*/, *diagA33inv_, *C2_xtilde1, zero);
+          xhat3->elementWiseMultiply(one /*/omega*/, *diagA33inv_, *F2_xtilde2, one);
         
-          xhat1->update(one, *xtilde1, -one); // \Delta \tilde{x}_1 - Ainv B_1 \Delta \tilde{x}_2
+          xhat3->update(one, *xtilde3, -one);
 
         } else {
           xhat2->update(omega, *xtilde2, zero);
@@ -493,6 +505,7 @@ namespace MueLu {
         rcpX->update(one, *bxhat, one); // x^{k+1} = x^{k} + xhat
       }
     }
+    
     if (bCopyResultX == true) {
       RCP<MultiVector> Xmerged = bX->Merge();
       X.update(one, *Xmerged, zero);
