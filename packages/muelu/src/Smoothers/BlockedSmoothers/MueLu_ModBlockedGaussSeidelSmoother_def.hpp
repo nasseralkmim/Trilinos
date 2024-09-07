@@ -368,7 +368,8 @@ namespace MueLu {
     // Clear solution from previos V cycles in case it is still stored
     if( InitialGuessIsZero==true )
       rcpX->putScalar(Teuchos::ScalarTraits<Scalar>::zero());
-
+    
+    bool useUpperTriangular = pL.get<bool>("UpperTriangular");
     if (!useUpperTriangular) {
       // incrementally improve solution vector X
       for (LocalOrdinal run = 0; run < nSweeps; ++run) {
@@ -443,7 +444,7 @@ namespace MueLu {
         xtilde3->putScalar(zero);
 
         // 2. Solve A_{33} \tilde{x}_3 = r_3
-                Inverse_.at(2)->Apply(*xtilde3, *r3);
+        Inverse_.at(2)->Apply(*xtilde3, *r3);
 
         // 3. Compute the RHS for the second sub-problem using the solution \tilde{x}_3.
         //     rhs2 = r_2 - A_{23} \tilde{x}_3
