@@ -396,8 +396,8 @@ namespace MueLu {
       // 5. Solve the third problem considering it independent from the others
       Inverse_.at(2)->Apply(*xtilde3, *r3);
 
-      // 6. Scale \tilde{x} with omega and store it
-      // \hat{x}: damped correction after one iteration
+      // 6. Store \tilde{x}
+      // \hat{x}: correction after one iteration
       xhat3->update(one, *xtilde3, zero);
       
       bool useSIMPLE = pL.get<bool>("UseSIMPLE");
@@ -410,7 +410,7 @@ namespace MueLu {
 
         // first update \Delta \tilde{x}_2 = \Delta \tilde{x}_2 - A22inv F1 \Delta \tilde{x}_3
         bA->getMatrix(1, 2)->apply(*xhat3, *F1_xtilde3);
-        xhat2->elementWiseMultiply(one, *diagA22inv_, *F1_xtilde3, zero);
+        xhat2->elementWiseMultiply(omega, *diagA22inv_, *F1_xtilde3, zero);
         xhat2->update(one, *xtilde2, -one);
 
         // use the updated xhat2 to update \Delta \tilde{x}_1
@@ -418,14 +418,14 @@ namespace MueLu {
         bA->getMatrix(0, 2)->apply(*xhat3, *C1_xtilde3);
 
         // since omega was already applied to \tilde{x}_2, we use 1 here
-        xhat1->elementWiseMultiply(one /*/omega*/, *diagA11inv_, *B1_xtilde2, zero);
-        xhat1->elementWiseMultiply(one /*/omega*/, *diagA11inv_, *C1_xtilde3, one);
+        xhat1->elementWiseMultiply(omega, *diagA11inv_, *B1_xtilde2, zero);
+        xhat1->elementWiseMultiply(omega, *diagA11inv_, *C1_xtilde3, one);
         
         xhat1->update(one, *xtilde1, -one); // \Delta \tilde{x}_1 - Ainv B_1 \Delta \tilde{x}_2
 
       } else {
-        xhat2->update(omega, *xtilde2, zero);
-        xhat1->update(omega, *xtilde1, zero);
+        xhat2->update(one, *xtilde2, zero);
+        xhat1->update(one, *xtilde1, zero);
       }
 
       // 7. Update solution vector
