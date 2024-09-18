@@ -205,7 +205,7 @@ namespace MueLu {
     if (useSIMPLE || useSIMPLEC || useEigenDamping) {
       Scalar AlambdaMax = bA->getMatrix(0, 0)->GetMaxEigenvalueEstimate();
       Scalar DlambdaMax = bA->getMatrix(1, 1)->GetMaxEigenvalueEstimate();
-      *out << "Using eingevalue damping in SIMPLE-like algorithm" << std::endl;
+      *out << "Using eigenvalue damping in SIMPLE-like algorithm" << std::endl;
       *out << "A lambdaMax: " << AlambdaMax << std::endl;
       *out << "D lambdaMax: " << DlambdaMax << std::endl;
     }
@@ -426,6 +426,9 @@ namespace MueLu {
           Scalar DlambdaMax = bA->getMatrix(1, 1)->GetMaxEigenvalueEstimate();
           AdampingFactor = omega / AlambdaMax;
           DdampingFactor = omega / DlambdaMax;
+          RCP<Teuchos::FancyOStream> out = Teuchos::fancyOStream(Teuchos::rcpFromRef(std::cout));
+          /* *out << "AdampingFactor" << AdampingFactor << std::endl; */
+          /* *out << "DdampingFactor" << DdampingFactor << std::endl; */
         } else {
           AdampingFactor = omega;
           DdampingFactor = omega;
