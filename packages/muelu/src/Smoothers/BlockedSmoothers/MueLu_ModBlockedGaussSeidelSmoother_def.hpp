@@ -90,6 +90,7 @@ namespace MueLu {
     validParamList->set< Scalar >                ("Damping factor",     1.0, "Damping/Scaling factor in BGS");
     validParamList->set< LocalOrdinal >          ("Sweeps",             1, "Number of BGS sweeps (default = 1)");
     validParamList->set<bool>("UseSIMPLE", false, "Use SIMPLE to correct displacement field (default = false)");
+    validParamList->set<bool>("UseEigenDamping", false, "Use max eingevalue estimate to damp SIMPLE correction (default = false)");
     validParamList->set<bool>("UseSIMPLEC", false, "Use SIMPLEC to correct displacement field (default = false)");
     validParamList->set<bool>("UpperTriangular", false, "Use upper triangular instead of lower (default = false)");
 
@@ -198,7 +199,16 @@ namespace MueLu {
       diagA22Vector = Utilities::GetLumpedMatrixDiagonal(*bA->getMatrix(1, 1));
       diagA22inv_ = Utilities::GetInverse(diagA22Vector);
     }
-
+    
+    // use eigenvalue damping only with "SIMPLE" approaches
+    bool useEigenDamping = pL.get<bool>("UseEigenDamping");
+    if (useSIMPLE || useSIMPLEC || useEigenDamping) {
+      Scalar AlambdaMax = bA->getMatrix(0, 0)->GetMaxEigenvalueEstimate();
+      Scalar DlambdaMax = bA->getMatrix(1, 1)->GetMaxEigenvalueEstimate();
+      *out << "Using eingevalue damping in SIMPLE-like algorithm" << std::endl;
+      *out << "A lambdaMax: " << AlambdaMax << std::endl;
+      *out << "D lambdaMax: " << DlambdaMax << std::endl;
+    }
     bool useUpperTriangular = pL.get<bool>("UpperTriangular");
     if (useUpperTriangular) {
       *out << "Using modBGS with upper triangular" << std::endl;
@@ -412,14 +422,27 @@ namespace MueLu {
         bA->getMatrix(1, 2)->apply(*xhat3, *F1_xtilde3);
         xhat2->elementWiseMultiply(omega, *diagA22inv_, *F1_xtilde3, zero);
         xhat2->update(one, *xtilde2, -one);
+        
+        Scalar AdampingFactor;
+        Scalar DdampingFactor;
+        bool useEigenDamping = pL.get<bool>("UseEigenDamping");
+        if (useEigenDamping) {
+          Scalar AlambdaMax = bA->getMatrix(0, 0)->GetMaxEigenvalueEstimate();
+          Scalar DlambdaMax = bA->getMatrix(1, 1)->GetMaxEigenvalueEstimate();
+          AdampingFactor = omega / AlambdaMax;
+          DdampingFactor = omega / DlambdaMax;
+        } else {
+          AdampingFactor = omega;
+          DdampingFactor = omega;
+        }
 
         // use the updated xhat2 to update \Delta \tilde{x}_1
         bA->getMatrix(0, 1)->apply(*xhat2, *B1_xtilde2);
         bA->getMatrix(0, 2)->apply(*xhat3, *C1_xtilde3);
 
         // since omega was already applied to \tilde{x}_2, we use 1 here
-        xhat1->elementWiseMultiply(omega, *diagA11inv_, *B1_xtilde2, zero);
-        xhat1->elementWiseMultiply(omega, *diagA11inv_, *C1_xtilde3, one);
+        xhat1->elementWiseMultiply(AdampingFactor, *diagA11inv_, *B1_xtilde2, zero);
+        xhat1->elementWiseMultiply(DdampingFactor, *diagA11inv_, *C1_xtilde3, one);
         
         xhat1->update(one, *xtilde1, -one); // \Delta \tilde{x}_1 - Ainv B_1 \Delta \tilde{x}_2
 
