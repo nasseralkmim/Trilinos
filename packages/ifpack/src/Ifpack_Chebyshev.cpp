@@ -133,11 +133,11 @@ Ifpack_Chebyshev(const Epetra_RowMatrix* Operator) :
   ApplyInverseTime_(0.0),
   ComputeFlops_(0.0),
   ApplyInverseFlops_(0.0),
-  PolyDegree_(1),
+  PolyDegree_(6),
   UseTranspose_(false),
   Condest_(-1.0),
   /* ComputeCondest_(false), (Unused; commented out to avoid build warnings) */
-  EigRatio_(30.0),
+  EigRatio_(20.0),
   EigMaxIters_(10),
   Label_(),
   LambdaMin_(0.0),
