@@ -93,6 +93,7 @@ namespace MueLu {
     validParamList->set<bool>("UseEigenDamping", false, "Use max eingevalue estimate to damp SIMPLE correction (default = false)");
     validParamList->set<bool>("UseSIMPLEC", false, "Use SIMPLEC to correct displacement field (default = false)");
     validParamList->set<bool>("UpperTriangular", false, "Use upper triangular instead of lower (default = false)");
+    validParamList->set<bool>("UseDiagInverse", false, "Use diagonal inverse in the SIMPLE (default = false)");
 
     return validParamList;
   }
@@ -436,7 +437,15 @@ namespace MueLu {
 
         // first update \Delta \tilde{x}_2 = \Delta \tilde{x}_2 - A22inv F1 \Delta \tilde{x}_3
         bA->getMatrix(1, 2)->apply(*xhat3, *F1_xtilde3);
-        xhat2->elementWiseMultiply(DdampingFactor, *diagA22inv_, *F1_xtilde3, zero);
+
+        bool useDiagInv = pL.get<bool>("UseDiagInverse");
+        if (useDiagInv) {
+          RCP<MultiVector> xhat2_temp1 = domainMapExtractor_->getVector(1, rcpX->getNumVectors(), bDomainThyraMode);
+          Inverse_.at(1)->Apply(*xhat2_temp1, *F1_xtilde3);
+          xhat2->update(DdampingFactor, *xhat2_temp1, zero);
+        } else {
+          xhat2->elementWiseMultiply(DdampingFactor, *diagA22inv_, *F1_xtilde3, zero);
+        }
         xhat2->update(one, *xtilde2, -one);
         
         // use the updated xhat2 to update \Delta \tilde{x}_1
@@ -444,9 +453,17 @@ namespace MueLu {
         bA->getMatrix(0, 2)->apply(*xhat3, *C1_xtilde3);
 
         // since omega was already applied to \tilde{x}_2, we use 1 here
-        xhat1->elementWiseMultiply(AdampingFactor, *diagA11inv_, *B1_xtilde2, zero);
-        xhat1->elementWiseMultiply(AdampingFactor, *diagA11inv_, *C1_xtilde3, one);
-        
+        if (useDiagInv) {
+          RCP<MultiVector> xhat1_temp1 = domainMapExtractor_->getVector(0, rcpX->getNumVectors(), bDomainThyraMode);
+          RCP<MultiVector> xhat1_temp2 = domainMapExtractor_->getVector(0, rcpX->getNumVectors(), bDomainThyraMode);
+          Inverse_.at(0)->Apply(*xhat1_temp1, *B1_xtilde2);
+          Inverse_.at(0)->Apply(*xhat1_temp2, *C1_xtilde3);
+          xhat1->update(AdampingFactor, *xhat1_temp1, zero);
+          xhat1->update(AdampingFactor, *xhat1_temp2, one);
+        } else {
+          xhat1->elementWiseMultiply(AdampingFactor, *diagA11inv_, *B1_xtilde2, zero);
+          xhat1->elementWiseMultiply(AdampingFactor, *diagA11inv_, *C1_xtilde3, one);
+        }
         xhat1->update(one, *xtilde1, -one); // \Delta \tilde{x}_1 - Ainv B_1 \Delta \tilde{x}_2
 
       } else {
@@ -510,6 +527,8 @@ namespace MueLu {
 
           // first update \tilde{x}_2 = \tilde{x}_2 - A22inv B2 \tilde{x}_1
           bA->getMatrix(1, 0)->apply(*xhat1, *B2_xtilde1);
+          bool useDiagInv = pL.get<bool>("UseDiagInverse");
+
           xhat2->elementWiseMultiply(one, *diagA22inv_, *B2_xtilde1, zero);
           xhat2->update(one, *xtilde2, -one);
 
