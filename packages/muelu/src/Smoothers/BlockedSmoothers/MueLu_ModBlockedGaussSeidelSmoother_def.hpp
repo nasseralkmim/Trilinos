@@ -203,7 +203,7 @@ namespace MueLu {
     
     // use eigenvalue damping only with "SIMPLE" approaches
     bool useEigenDamping = pL.get<bool>("UseEigenDamping");
-    if (useSIMPLE || useSIMPLEC || useEigenDamping) {
+    if ((useSIMPLE || useSIMPLEC) && useEigenDamping) {
       Scalar AlambdaMax = bA->getMatrix(0, 0)->GetMaxEigenvalueEstimate();
       Scalar DlambdaMax = bA->getMatrix(1, 1)->GetMaxEigenvalueEstimate();
       *out << "Using eigenvalue damping in SIMPLE-like algorithm" << std::endl;
@@ -224,6 +224,11 @@ namespace MueLu {
         diagA33Vector = Utilities::GetLumpedMatrixDiagonal(*bA->getMatrix(2, 2));
         diagA33inv_ = Utilities::GetInverse(diagA33Vector);
       }
+     }
+
+    bool useDiagInv = pL.get<bool>("UseDiagInverse");
+    if ((useSIMPLE || useSIMPLEC) && useDiagInv) {
+      *out << "Using same diagonal inverse approximation in the SIMPLE-like algorithm" << std::endl;
     }
 
     SmootherPrototype::IsSetup(true);
