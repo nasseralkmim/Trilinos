@@ -385,10 +385,8 @@ namespace MueLu {
     if( InitialGuessIsZero==true )
       rcpX->putScalar(Teuchos::ScalarTraits<Scalar>::zero());
     
-    bool useUpperTriangular = pL.get<bool>("UpperTriangular");
-    if (!useUpperTriangular) {
-      // incrementally improve solution vector X
-      for (LocalOrdinal run = 0; run < nSweeps; ++run) {
+    // incrementally improve solution vector X
+    for (LocalOrdinal run = 0; run < nSweeps; ++run) {
       // 1. calculate current residual = B - A rcpX
       residual->update(one, *rcpB, zero); // residual = B
       if(InitialGuessIsZero == false || run > 0)
@@ -478,83 +476,6 @@ namespace MueLu {
 
       // 7. Update solution vector
       rcpX->update(one, *bxhat, one); // x^{k+1} = x^{k} + xhat
-    }
-    } else {
-      // incrementally improve solution vector X
-      for (LocalOrdinal run = 0; run < nSweeps; ++run) {
-        // 1. calculate current residual = B - A rcpX
-        residual->update(one, *rcpB, zero); // residual = B
-        if(InitialGuessIsZero == false || run > 0)
-          A_->apply(*rcpX, *residual, Teuchos::NO_TRANS, -one, one);
-
-        xtilde1->putScalar(zero);
-        xtilde2->putScalar(zero);
-        xtilde3->putScalar(zero);
-
-        // 2. Solve A_{33} \tilde{x}_3 = r_3
-        Inverse_.at(2)->Apply(*xtilde3, *r3);
-
-        // 3. Compute the RHS for the second sub-problem using the solution \tilde{x}_3.
-        //     rhs2 = r_2 - A_{23} \tilde{x}_3
-        RCP<MultiVector> rhs_2 = rangeMapExtractor_->getVector(1, rcpB->getNumVectors(), bRangeThyraMode);
-        bA->getMatrix(1, 2)->apply(*xtilde3, *rhs_2);
-        rhs_2->update(one, *r2, -one);
-
-        // 4. Solve this second problem
-        Inverse_.at(1)->Apply(*xtilde2, *rhs_2);
-
-        // 5. Compute the RHS for the first block
-        //     rhs1 = r_1 - A_{12} \tilde{x}_2 - A_{13} \tilde{x}_3
-        RCP<MultiVector> rhs_1 = rangeMapExtractor_->getVector(0, rcpB->getNumVectors(), bRangeThyraMode);
-        RCP<MultiVector> temp_1 = rangeMapExtractor_->getVector(0, rcpB->getNumVectors(), bRangeThyraMode);
-        RCP<MultiVector> temp_2 = rangeMapExtractor_->getVector(0, rcpB->getNumVectors(), bRangeThyraMode);
-
-        bA->getMatrix(0, 1)->apply(*xtilde2, *temp_1);
-        bA->getMatrix(0, 2)->apply(*xtilde3, *temp_2);
-
-        rhs_1->update(one, *r1, 0); // rhs_1 = r_1
-        rhs_1->update(-one, *temp_1, one); // rhs_1 = r1 - A_{12} \tilde{x}_2
-        rhs_1->update(-one, *temp_2, one); 
-
-        Inverse_.at(0)->Apply(*xtilde1, *rhs_1);
-
-        // 6. Scale \tilde{x} with omega and store it
-        // \hat{x}: damped correction after one iteration
-        xhat1->update(omega, *xtilde1, zero);
-      
-        bool useSIMPLE = pL.get<bool>("UseSIMPLE");
-        bool useSIMPLEC = pL.get<bool>("UseSIMPLEC");
-        if (useSIMPLE || useSIMPLEC) {
-          // correct analogous to SIMPLE, using \tilde{x}_1 and \tilde{x}_2
-          RCP<MultiVector> B2_xtilde1 = domainMapExtractor_->getVector(1, rcpX->getNumVectors(), bDomainThyraMode);
-          RCP<MultiVector> C2_xtilde1 = domainMapExtractor_->getVector(2, rcpX->getNumVectors(), bDomainThyraMode);
-          RCP<MultiVector> F2_xtilde2 = domainMapExtractor_->getVector(2, rcpX->getNumVectors(), bDomainThyraMode);
-
-          // first update \tilde{x}_2 = \tilde{x}_2 - A22inv B2 \tilde{x}_1
-          bA->getMatrix(1, 0)->apply(*xhat1, *B2_xtilde1);
-          bool useDiagInv = pL.get<bool>("UseDiagInverse");
-
-          xhat2->elementWiseMultiply(one, *diagA22inv_, *B2_xtilde1, zero);
-          xhat2->update(one, *xtilde2, -one);
-
-          // use the updated xhat2 to update \Delta \tilde{x}_1
-          bA->getMatrix(2, 0)->apply(*xhat1, *C2_xtilde1);
-          bA->getMatrix(2, 1)->apply(*xhat2, *F2_xtilde2);
-
-          // since omega was already applied to \tilde{x}_2, we use 1 here
-          xhat3->elementWiseMultiply(one /*/omega*/, *diagA33inv_, *C2_xtilde1, zero);
-          xhat3->elementWiseMultiply(one /*/omega*/, *diagA33inv_, *F2_xtilde2, one);
-        
-          xhat3->update(one, *xtilde3, -one);
-
-        } else {
-          xhat2->update(omega, *xtilde2, zero);
-          xhat3->update(omega, *xtilde3, zero);
-        }
-
-        // 7. Update solution vector
-        rcpX->update(one, *bxhat, one); // x^{k+1} = x^{k} + xhat
-      }
     }
     
     if (bCopyResultX == true) {
