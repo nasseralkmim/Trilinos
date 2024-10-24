@@ -39,6 +39,7 @@
 #include "MueLu_BlockedCoordinatesTransferFactory_fwd.hpp"
 #include "MueLu_BlockedDirectSolver_fwd.hpp"
 #include "MueLu_BlockedGaussSeidelSmoother_fwd.hpp"
+#include "MueLu_ModBlockedGaussSeidelSmoother_fwd.hpp"
 #include "MueLu_BlockedJacobiSmoother_fwd.hpp"
 #include "MueLu_BlockedPFactory_fwd.hpp"
 #include "MueLu_BlockedRAPFactory_fwd.hpp"
