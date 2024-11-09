@@ -27,6 +27,7 @@
 #ifdef MUELU_RECURMG
 #include "Stratimikos_MueLuHelpers.hpp"
 #endif
+#include "Stratimikos_MueLuHelpers.hpp"
 
 #include <Stratimikos_DefaultLinearSolverBuilder.hpp>
 #include "Teuchos_AbstractFactoryStd.hpp"
@@ -90,6 +91,7 @@ void StratimikosSmoother<double, LocalOrdinal, GlobalOrdinal, Node>::SetupStrati
     TEUCHOS_TEST_FOR_EXCEPTION(true, Exceptions::RuntimeError, "MueLu::StratimikosSmoother:: must compile with MUELU_RECURMG defined. Unfortunately, cmake does not always produce a proper link.txt file (which sometimes requires libmuelu.a before and after libmuelu-interface.a). After configuring, run script muelu/utils/misc/patchLinkForRecurMG to change link.txt files manually. If you want to create test example, add -DMUELU_RECURMG=ON to cmake arguments.");
 #endif
   }
+  Stratimikos::enableMueLu<LocalOrdinal, GlobalOrdinal, Node>(linearSolverBuilder);
 
   linearSolverBuilder.setParameterList(rcpFromRef(const_cast<ParameterList&>(this->GetParameterList())));
 
