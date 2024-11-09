@@ -131,6 +131,7 @@ class IntrepidPCoarsenFactory : public PFactory {
                                                const Teuchos::RCP<const Map> &lo_colMap,
                                                const Teuchos::RCP<const Map> &lo_domainMap,
                                                const Teuchos::RCP<const Map> &hi_map,
+                                               const int &blockSize,
                                                Teuchos::RCP<Matrix> &P) const;
   //@}
 
@@ -170,6 +171,7 @@ void BuildLoElemToNode(const LOFieldContainer &hi_elemToNode,
                        const std::vector<bool> &hi_nodeIsOwned,
                        const std::vector<size_t> &lo_node_in_hi,
                        const Teuchos::ArrayRCP<const int> &hi_isDirichlet,
+                       const int &blockSize,
                        LOFieldContainer &lo_elemToNode,
                        std::vector<bool> &lo_nodeIsOwned,
                        std::vector<LocalOrdinal> &hi_to_lo_map,
