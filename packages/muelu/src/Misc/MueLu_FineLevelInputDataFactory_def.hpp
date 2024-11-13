@@ -10,6 +10,7 @@
 #ifndef PACKAGES_MUELU_SRC_MISC_MUELU_FINELEVELINPUTDATAFACTORY_DEF_HPP_
 #define PACKAGES_MUELU_SRC_MISC_MUELU_FINELEVELINPUTDATAFACTORY_DEF_HPP_
 
+#include "Kokkos_DynRankView.hpp"
 #include "Xpetra_Matrix.hpp"
 
 #include "MueLu_FineLevelInputDataFactory_decl.hpp"
@@ -121,6 +122,10 @@ void FineLevelInputDataFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Build
       Set(currentLevel, variableName, data);
     } else if (variableType.find("Operator") != npos) {
       RCP<Operator> data = currentLevel.Get<RCP<Operator> >(variableName, fact.get());
+      Set(currentLevel, variableName, data);
+    } else if (variableType.find("FieldContainer") != npos) {
+      typedef Kokkos::DynRankView<LocalOrdinal, typename Node::device_type> FCi;
+      RCP<FCi> data = currentLevel.Get<RCP<FCi> >(variableName, fact.get());
       Set(currentLevel, variableName, data);
     } else {
       // TAW: is this working with empty procs?
