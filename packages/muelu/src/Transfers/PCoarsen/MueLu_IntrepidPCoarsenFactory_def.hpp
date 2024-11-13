@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <iostream>
+#include <iterator>
 #include <ostream>
 
 #include "MueLu_IntrepidPCoarsenFactory_decl.hpp"
@@ -22,9 +23,11 @@
 #include "MueLu_Level.hpp"
 #include "MueLu_MasterList.hpp"
 #include "MueLu_Monitor.hpp"
+#include "MueLu_NoFactory.hpp"
 #include "MueLu_PerfUtils.hpp"
 #include "MueLu_Utilities.hpp"
 
+#include "Teuchos_RCPDecl.hpp"
 #include "Teuchos_ScalarTraits.hpp"
 
 // Intrepid Headers
@@ -43,6 +46,7 @@
 //#include Intrepid_HGRAD_QUAD_C2_FEM.hpp
 #include "Intrepid2_HGRAD_QUAD_Cn_FEM.hpp"
 #include "Teuchos_VerbosityLevel.hpp"
+#include "Xpetra_StridedMapFactory_decl.hpp"
 // Intrepid_HGRAD_TET_C1_FEM.hpp
 // Intrepid_HGRAD_TET_C2_FEM.hpp
 // Intrepid_HGRAD_TET_Cn_FEM.hpp
@@ -408,7 +412,7 @@ void BuildLoElemToNode(const LOFieldContainer &hi_elemToNode,
       // NOTE: Check x and y component for 2D problem with two dofs per node.
       // TODO: Why remove Dirichlet nodes?
       if (blockSize == 2) {
-        if (hi_isDirichlet[lid * 2] && hi_isDirichlet[lid * 2 + 1]) {
+        if (hi_isDirichlet[lid * blockSize] && hi_isDirichlet[lid * blockSize + 1]) {
           // std::cout << lid << " is Dirichlet" << std::endl;
           lo_elemToNode_host(i, j) = LOINVALID;
         }
@@ -486,7 +490,7 @@ void BuildLoElemToNode(const LOFieldContainer &hi_elemToNode,
         // << hi_to_lo_map[lo_elemToNode_host(i, j)] << std::endl;
         // NOTE: Divide by two (num dof per node) to go from dof numbering to node numbering
         if (blockSize == 2)
-          lo_elemToNode_host(i, j) = hi_to_lo_map[2 * lo_elemToNode_host(i, j)] / 2;
+          lo_elemToNode_host(i, j) = hi_to_lo_map[blockSize * lo_elemToNode_host(i, j)] / blockSize;
         else
           lo_elemToNode_host(i, j) = hi_to_lo_map[lo_elemToNode_host(i, j)];
         }
@@ -655,10 +659,17 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Generat
   typedef typename Teuchos::ScalarTraits<SC>::halfPrecision SClo;
   typedef typename Teuchos::ScalarTraits<SClo>::magnitudeType MT;
   MT effective_zero = Teuchos::ScalarTraits<MT>::eps();
+  
+  // Add a strided map
+  std::vector<size_t> strideInfo;
+  strideInfo.push_back(blockSize);
+  RCP<Map> stridedMap = Xpetra::StridedMapFactory<LocalOrdinal, GlobalOrdinal>::Build(hi_map, strideInfo);
 
   // Allocate P
-  P                   = rcp(new CrsMatrixWrap(hi_map, lo_colMap, numFieldsHi));  // FIXLATER: Need faster fill
-  RCP<CrsMatrix> Pcrs = toCrsMatrix(P);
+  P                   = rcp(new CrsMatrixWrap(stridedMap, lo_colMap, numFieldsHi));  // FIXLATER: Need faster fill
+  RCP<CrsMatrix> Pcrs = rcp_dynamic_cast<CrsMatrixWrap>(P)->getCrsMatrix();
+  P->CreateView("stridedMaps", stridedMap, stridedMap);
+  std::cout << "P has strided map? " << P->IsView("stridedMaps") << std::endl;
 
   // Slow-ish fill
   // NOTE: Loop over number of high-elements. Then loop over number of high-nodes. Row
@@ -683,19 +694,19 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Generat
             // plug the hi-node into the map to find the low-dof. The low-dof already
             // represents the right column for the prolongator operator.
             LO col_lid = hi_to_lo_map[hi_elemToNode_host(i, lo_node_in_hi[k]) * blockSize + dof];
-            std::cout << "lo-node: " << k << " effect on hi-node: " << j << " from ele: " << i << " (hi)row: " << row_gid * 2 + dof << " (lo)col: " << col_lid;
+            // std::cout << "lo-node: " << k << " effect on hi-node: " << j << " from ele: " << i << " (hi)row: " << row_gid * blockSize + dof << " (lo)col: " << col_lid;
             if (col_lid == LOINVALID) {
-              std::cout << std::endl;
+              // std::cout << std::endl;
               continue;
             }
 
             col_gid[0] = {lo_colMap->getGlobalElement(col_lid)};
-            std::cout << " col_gid: " << col_gid[0] << std::endl;
+            // std::cout << " col_gid: " << col_gid[0] << std::endl;
             val[0]     = LoValues_at_HiDofs_host(k, j);
 
             // Skip near-zeros
             if (Teuchos::ScalarTraits<SC>::magnitude(val[0]) >= effective_zero)
-              P->insertGlobalValues(row_gid * 2 + dof, col_gid(), val());
+              P->insertGlobalValues(row_gid * blockSize + dof, col_gid(), val());
           }
         }
         touched[row_lid] = true;
@@ -704,7 +715,7 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Generat
 
   }
   P->fillComplete(lo_domainMap, hi_map);
-  Teuchos::RCP<Teuchos::FancyOStream> out = Teuchos::fancyOStream(Teuchos::rcpFromRef(std::cout));
+  // Teuchos::RCP<Teuchos::FancyOStream> out = Teuchos::fancyOStream(Teuchos::rcpFromRef(std::cout));
   // P->describe(*out, Teuchos::VERB_EXTREME);
   // Xpetra::IO<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Write("Pc.mat", *P);
 }
@@ -842,7 +853,7 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
   const ParameterList &pL = GetParameterList();
 
   // Block size defines how many dofs per node
-  int blockSize = pL.get<int>("number of equations");
+  int blockSize = A->GetFixedBlockSize();
   std::cout << "block size: " << blockSize << std::endl;
   
   /*******************/
@@ -916,9 +927,9 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
   // Get Dirichlet unknown information
   RCP<Xpetra::Vector<int, LocalOrdinal, GlobalOrdinal, Node>> hi_isDirichletRow, hi_isDirichletCol;
   Utilities::FindDirichletRowsAndPropagateToCols(A, hi_isDirichletRow, hi_isDirichletCol);
-  std::cout << "hi_isDirichletCol: ";
-  hi_isDirichletCol->describe(*out, Teuchos::VERB_EXTREME);
-  std::cout << std::endl;
+  // std::cout << "hi_isDirichletCol: ";
+  // hi_isDirichletCol->describe(*out, Teuchos::VERB_EXTREME);
+  // std::cout << std::endl;
 
 #if 0
     printf("[%d] isDirichletRow = ",A->getRowMap()->getComm()->getRank());
@@ -967,7 +978,7 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
   // Generate the P1_domainMap
   // HOW: Since we know how many each proc has, we can use the non-uniform contiguous map constructor to do the work for us
   RCP<const Map> P1_domainMap = MapFactory::Build(rowMap->lib(), Teuchos::OrdinalTraits<Xpetra::global_size_t>::invalid(), P1_numOwnedNodes, rowMap->getIndexBase(), rowMap->getComm());
-  P1_domainMap->describe(*out, Teuchos::VERB_EXTREME);
+  // P1_domainMap->describe(*out, Teuchos::VERB_EXTREME);
   MUELU_LEVEL_SET_IF_REQUESTED_OR_KEPT(coarseLevel, "CoarseMap", P1_domainMap);
 
   // Generate the P1_columnMap
@@ -980,13 +991,14 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
   /*******************/
   // Generate the coarsening
   if (lo_degree == 1)
-    GenerateLinearCoarsening_pn_kirby_to_p1(*Pn_elemToNode, Pn_nodeIsOwned, hi_DofCoords, lo_node_in_hi, *lo_basis, hi_to_lo_map, P1_colMap, P1_domainMap, A->getRowMap(), finalP);
+    GenerateLinearCoarsening_pn_kirby_to_p1(*Pn_elemToNode, Pn_nodeIsOwned, hi_DofCoords, lo_node_in_hi, *lo_basis, hi_to_lo_map, P1_colMap, P1_domainMap, A->getRowMap(), blockSize, finalP);
   else
     GenerateLinearCoarsening_pn_kirby_to_pm(*Pn_elemToNode, Pn_nodeIsOwned, hi_DofCoords, lo_elemToHiRepresentativeNode, *lo_basis, hi_to_lo_map, P1_colMap, P1_domainMap, A->getRowMap(), finalP);
 
   /*******************/
   // Zero out the Dirichlet rows in P
   Utilities::ZeroDirichletRows(finalP, A_dirichletRows);
+  Xpetra::IO<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Write("P_c.m", *finalP);
 
   /*******************/
   // Build the nullspace
