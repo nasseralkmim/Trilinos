@@ -27,6 +27,17 @@
 #include "MueLu_SmootherPrototype.hpp"
 #include "MueLu_FactoryBase_fwd.hpp"
 #include "MueLu_Monitor.hpp"
+#include "Stratimikos_MueLuHelpers.hpp"
+// Stratimikos
+#if defined(HAVE_MUELU_STRATIMIKOS) && defined(HAVE_MUELU_THYRA)
+// Thyra includes
+#include <Thyra_LinearOpWithSolveBase.hpp>
+#include <Thyra_VectorBase.hpp>
+#include <Thyra_SolveSupportTypes.hpp>
+// Stratimikos includes
+#include <Stratimikos_LinearSolverBuilder.hpp>
+#include <Stratimikos_MueLuHelpers.hpp>
+#endif
 
 namespace MueLu {
 
@@ -223,10 +234,23 @@ class TekoSmoother<double, int, GlobalOrdinal, Node> : public SmootherPrototype<
     TEUCHOS_TEST_FOR_EXCEPTION(tekoParams_.is_null(), Exceptions::BadCast,
                                "MueLu::TekoSmoother::Build: No Teko parameters have been set.");
 
-    Teuchos::RCP<Teko::InverseLibrary> invLib  = Teko::InverseLibrary::buildFromParameterList(*tekoParams_);
-    Teuchos::RCP<Teko::InverseFactory> inverse = invLib->getInverseFactory(smootherType);
+    // Build the inverse library from a Stratimikos builder, like:
+    // MueLu_StratimikosSmoother, so we can add MueLu as a preconditioner option.
+    // Based on: [[file:~/.local/src/Trilinos/packages/muelu/test/maxwell/Maxwell3D.cpp::// Build Stratimikos solver]]
+    Stratimikos::LinearSolverBuilder<Scalar> linearSolverBuilder;
+    Stratimikos::enableMueLu(linearSolverBuilder);
+    // std::cout << *tekoParams_ << std::endl;
+    linearSolverBuilder.setParameterList(tekoParams_);
 
-    inverseOp_ = Teko::buildInverse(*inverse, thyOp);
+    // Build a new "solver factory" according to the previously specified parameter list.
+    RCP<Thyra::LinearOpWithSolveFactoryBase<Scalar>> solverFactory = Thyra::createLinearSolveStrategy(linearSolverBuilder);
+    auto precFactory = solverFactory->getPreconditionerFactory();
+    auto prec = precFactory->createPrec();
+    Thyra::initializePrec<Scalar>(*precFactory, thyOp, prec.ptr());
+
+    inverseOp_ = prec->getLeftPrecOp();
+    
+    // inverseOp_ = Teko::buildInverse(*inverse, thyOp);
     TEUCHOS_TEST_FOR_EXCEPTION(inverseOp_.is_null(), Exceptions::BadCast,
                                "MueLu::TekoSmoother::Build: Failed to build Teko inverse operator. Probably a problem with the Teko parameters.");
 
