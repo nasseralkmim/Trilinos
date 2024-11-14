@@ -243,6 +243,10 @@ class FactoryFactory : public BaseClass {
 #ifdef HAVE_MUELU_TEKO
   RCP<FactoryBase> BuildTekoSmoother(const Teuchos::ParameterList& paramList, const FactoryMap& factoryMapIn, const FactoryManagerMap& factoryManagersIn) const;
 #endif
+  
+#ifdef HAVE_MUELU_STRATIMIKOS
+  RCP<FactoryBase> BuildStratimikosSmoother(const Teuchos::ParameterList& paramList, const FactoryMap& factoryMapIn, const FactoryManagerMap& factoryManagersIn) const;
+#endif
 
   RCP<FactoryBase> BuildBlockedDirectSolver(const Teuchos::ParameterList& paramList, const FactoryMap& /* factoryMapIn */, const FactoryManagerMap& /* factoryManagersIn */) const;
 

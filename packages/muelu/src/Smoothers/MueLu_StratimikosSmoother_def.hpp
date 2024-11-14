@@ -78,10 +78,20 @@ void StratimikosSmoother<double, LocalOrdinal, GlobalOrdinal, Node>::SetupStrati
   if (recurMgOnFilteredA_) {
     RCP<Matrix> filteredA;
     ExperimentalDropVertConnections(filteredA, currentLevel);
-    thyraA = Xpetra::ThyraUtils<Scalar, LocalOrdinal, GlobalOrdinal, Node>::toThyra(toCrsMatrix(filteredA));
-  } else
-    thyraA = Xpetra::ThyraUtils<Scalar, LocalOrdinal, GlobalOrdinal, Node>::toThyra(toCrsMatrix(A_));
-
+    thyraA = Xpetra::ThyraUtils<Scalar, LocalOrdinal, GlobalOrdinal, Node>::toThyra(Teuchos::rcp_dynamic_cast<CrsMatrixWrap>(filteredA)->getCrsMatrix());
+  } else{
+    Teuchos::RCP<Teuchos::FancyOStream> out = Teuchos::fancyOStream(Teuchos::rcpFromRef(std::cout));
+    // A_->describe(*out, Teuchos::VERB_EXTREME);
+    // In case A_ is a blocked, we need to cast it as Thyra blocked and then as regular Thyra lienar Op.
+    // Based on: [[file:~/.local/src/Trilinos/packages/muelu/adapters/stratimikos/Thyra_MueLuPreconditionerFactory_def.hpp::bool bIsBlocked = XpThyUtils::isBlockedOperator(fwdOp);]]
+    RCP<BlockedCrsMatrix> bA = Teuchos::rcp_dynamic_cast<BlockedCrsMatrix>(A_);
+    if (bA == Teuchos::null)
+      thyraA = Xpetra::ThyraUtils<Scalar, LocalOrdinal, GlobalOrdinal, Node>::toThyra(Teuchos::rcp_dynamic_cast<CrsMatrixWrap>(A_)->getCrsMatrix());
+    else {
+      thyraA = Xpetra::ThyraUtils<Scalar, LocalOrdinal, GlobalOrdinal, Node>::toThyra(bA);
+    }
+    thyraA->describe(*out);
+  }
   // Build Stratimikos solver
   Stratimikos::DefaultLinearSolverBuilder linearSolverBuilder;
   if (recurMgOnFilteredA_) {
@@ -91,7 +101,7 @@ void StratimikosSmoother<double, LocalOrdinal, GlobalOrdinal, Node>::SetupStrati
     TEUCHOS_TEST_FOR_EXCEPTION(true, Exceptions::RuntimeError, "MueLu::StratimikosSmoother:: must compile with MUELU_RECURMG defined. Unfortunately, cmake does not always produce a proper link.txt file (which sometimes requires libmuelu.a before and after libmuelu-interface.a). After configuring, run script muelu/utils/misc/patchLinkForRecurMG to change link.txt files manually. If you want to create test example, add -DMUELU_RECURMG=ON to cmake arguments.");
 #endif
   }
-  Stratimikos::enableMueLu<LocalOrdinal, GlobalOrdinal, Node>(linearSolverBuilder);
+  Stratimikos::enableMueLu(linearSolverBuilder);
 
   linearSolverBuilder.setParameterList(rcpFromRef(const_cast<ParameterList&>(this->GetParameterList())));
 

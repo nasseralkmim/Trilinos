@@ -79,6 +79,8 @@
 #include "MueLu_SchurComplementFactory.hpp"
 #include "MueLu_SimpleSmoother.hpp"
 #include "MueLu_SmootherFactory.hpp"
+#include "MueLu_StratimikosSmoother_decl.hpp"
+#include "MueLu_SmootherPrototype.hpp"
 #include "MueLu_StructuredAggregationFactory.hpp"
 #include "MueLu_StructuredLineDetectionFactory.hpp"
 #include "MueLu_SubBlockAFactory.hpp"
@@ -286,6 +288,9 @@ RCP<const FactoryBase> FactoryFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>
 #endif
 #ifdef HAVE_MUELU_TEKO
   if (factoryName == "TekoSmoother") return BuildTekoSmoother(paramList, factoryMapIn, factoryManagersIn);
+#endif
+#if defined(HAVE_MUELU_STRATIMIKOS) && defined(HAVE_MUELU_THYRA)
+  if (factoryName == "StratimikosSmoother") return BuildStratimikosSmoother(paramList, factoryMapIn, factoryManagersIn);
 #endif
   if (factoryName == "UzawaSmoother") return BuildBlockedSmoother<UzawaSmoother>(paramList, factoryMapIn, factoryManagersIn);
 
@@ -708,6 +713,21 @@ RCP<FactoryBase> FactoryFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Buil
 
   // Set Teko parameters ("Inverse Factory Library")
   bs->SetTekoParameters(tekoParams);
+  return rcp(new SmootherFactory(bs));
+}
+#endif
+
+#if defined(HAVE_MUELU_STRATIMIKOS) && defined(HAVE_MUELU_THYRA)
+template <class Scalar, class LocalOrdinal, class GlobalOrdinal, class Node>
+RCP<FactoryBase> FactoryFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildStratimikosSmoother(const Teuchos::ParameterList& paramList, const FactoryMap& factoryMapIn, const FactoryManagerMap& factoryManagersIn) const {
+  RCP<ParameterList> paramListNonConst = rcp(new ParameterList(paramList));
+  RCP<ParameterList> stratimikosParams        = rcp(new ParameterList(paramListNonConst->sublist("ParameterList")));
+
+  // create a stratimikos smoother
+  // based on: [[file:~/.local/src/Trilinos/packages/muelu/src/Smoothers/MueLu_TrilinosSmoother_def.hpp::sStratimikos_ = rcp(new StratimikosSmoother(type_, paramList));]]
+  std::string type = "STRATIMIKOS";
+  using StratimikosSmoother [[maybe_unused]] = MueLu::StratimikosSmoother<Scalar, LocalOrdinal, GlobalOrdinal, Node>;
+  RCP<StratimikosSmoother> bs = rcp(new StratimikosSmoother(type, *stratimikosParams));
 
   return rcp(new SmootherFactory(bs));
 }
