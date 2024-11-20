@@ -307,7 +307,7 @@ class ThyraUtils<double, int, int, EpetraNode> {
         RCP<const ThyMultVecBase> thyBlockMV = thyProdVec->getMultiVectorBlock(b);
         // xpBlockMV can be of type MultiVector or BlockedMultiVector
         RCP<const MultiVector> xpBlockMV = ThyUtils::toXpetra(thyBlockMV, comm);  // recursive call
-        xpBlockedMultVec->setMultiVector(b, xpBlockMV, true /* Thyra mode */);
+        xpBlockedMultVec->setMultiVector(b, xpBlockMV, false /* Thyra mode */);
       }
 
       TEUCHOS_TEST_FOR_EXCEPT(Teuchos::is_null(xpMultVec));
@@ -674,9 +674,10 @@ class ThyraUtils<double, int, int, EpetraNode> {
     if (bmap.is_null() == false) {
       Teuchos::Array<Teuchos::RCP<const Thyra::VectorSpaceBase<Scalar>>> vecSpaces(bmap->getNumMaps());
       for (size_t i = 0; i < bmap->getNumMaps(); i++) {
+        bool bThyraMode = bmap->getThyraMode();
         // we need Thyra GIDs for all the submaps
         Teuchos::RCP<const Thyra::VectorSpaceBase<Scalar>> vs =
-            Xpetra::ThyraUtils<Scalar, LO, GO, Node>::toThyra(bmap->getMap(i, true));
+            Xpetra::ThyraUtils<Scalar, LO, GO, Node>::toThyra(bmap->getMap(i, bThyraMode));
         vecSpaces[i] = vs;
       }
 
@@ -1096,7 +1097,7 @@ class ThyraUtils<double, int, long long, EpetraNode> {
         RCP<const ThyMultVecBase> thyBlockMV = thyProdVec->getMultiVectorBlock(b);
         // xpBlockMV can be of type MultiVector or BlockedMultiVector
         RCP<const MultiVector> xpBlockMV = ThyUtils::toXpetra(thyBlockMV, comm);  // recursive call
-        xpBlockedMultVec->setMultiVector(b, xpBlockMV, true /* Thyra mode */);
+        xpBlockedMultVec->setMultiVector(b, xpBlockMV, false /* Thyra mode */);
       }
 
       TEUCHOS_TEST_FOR_EXCEPT(Teuchos::is_null(xpMultVec));

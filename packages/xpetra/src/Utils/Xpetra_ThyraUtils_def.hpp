@@ -412,11 +412,12 @@ Xpetra::ThyraUtils<Scalar, LocalOrdinal, GlobalOrdinal, Node>::
   // check whether map is of type BlockedMap
   RCP<const BlockedMap> bmap = Teuchos::rcp_dynamic_cast<const BlockedMap>(map);
   if (bmap.is_null() == false) {
+    bool bThyraMode = bmap->getThyraMode();
     Teuchos::Array<Teuchos::RCP<const Thyra::VectorSpaceBase<Scalar>>> vecSpaces(bmap->getNumMaps());
     for (size_t i = 0; i < bmap->getNumMaps(); i++) {
       // we need Thyra GIDs for all the submaps
       Teuchos::RCP<const Thyra::VectorSpaceBase<Scalar>> vs =
-          Xpetra::ThyraUtils<Scalar, LO, GO, Node>::toThyra(bmap->getMap(i, true));
+          Xpetra::ThyraUtils<Scalar, LO, GO, Node>::toThyra(bmap->getMap(i, bThyraMode));
       vecSpaces[i] = vs;
     }
 

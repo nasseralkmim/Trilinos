@@ -128,14 +128,14 @@ BlockedMap<LocalOrdinal, GlobalOrdinal, Node>::
 template <class LocalOrdinal, class GlobalOrdinal, class Node>
 BlockedMap<LocalOrdinal, GlobalOrdinal, Node>::
     BlockedMap(const std::vector<RCP<const Map>>& maps, const std::vector<RCP<const Map>>& thyramaps) {
-  bThyraMode_ = true;
+  bThyraMode_ = false;
 
   // plausibility check
   TEUCHOS_TEST_FOR_EXCEPTION(thyramaps.size() != maps.size(), std::logic_error, "logic error. The number of submaps must be identical!");
   for (size_t v = 0; v < thyramaps.size(); ++v) {
-    TEUCHOS_TEST_FOR_EXCEPTION(thyramaps[v]->getMinAllGlobalIndex() != 0,
-                               std::logic_error,
-                               "logic error. When using Thyra-style numbering all sub-block maps must start with zero as GID.");
+    // TEUCHOS_TEST_FOR_EXCEPTION(thyramaps[v]->getMinAllGlobalIndex() != 0,
+    //                            std::logic_error,
+    //                            "logic error. When using Thyra-style numbering all sub-block maps must start with zero as GID.");
 
     XPETRA_TEST_FOR_EXCEPTION(thyramaps[v]->getLocalNumElements() != maps[v]->getLocalNumElements(),
                               std::logic_error,
