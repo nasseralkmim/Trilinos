@@ -236,13 +236,13 @@ void IntrepidGetP1NodeInHi(const Teuchos::RCP<Intrepid2::Basis<typename KokkosDe
   // Get coordinates of the hi_basis dof's
   Kokkos::resize(hi_DofCoords, hi_basis->getCardinality(), hi_basis->getBaseCellTopology().getDimension());
   hi_basis->getDofCoords(hi_DofCoords);
-  std::cout << "hi_DofCoords: ";
-  for (int i = 0; i < hi_DofCoords.extent(0); ++i) {
-    for (int j = 0; j < hi_DofCoords.extent(1); ++j) {
-      std::cout << hi_DofCoords(i, j) << " ";
-    }
-    std::cout << std::endl;
-  }
+  // std::cout << "hi_DofCoords: ";
+  // for (int i = 0; i < hi_DofCoords.extent(0); ++i) {
+  //   for (int j = 0; j < hi_DofCoords.extent(1); ++j) {
+  //     std::cout << hi_DofCoords(i, j) << " ";
+  //   }
+  //   std::cout << std::endl;
+  // }
 }
 
 /*********************************************************************************************************/
@@ -398,11 +398,14 @@ void BuildLoElemToNode(const LOFieldContainer &hi_elemToNode,
 
   // Build lo_elemToNode (in the hi local index ordering) and flag owned ones
   // NOTE: the flag, 'is_low_order' indicates which dofs are low order.
+  // NOTE: we are looping over elements and populating a vector based on DOF, a rank can
+  // have a element but not all de DOF from this element. Therefore, the vector
+  // 'is_low_order' does not match the 'Pn_nodeIsOwned'.
   std::vector<bool> is_low_order(hi_numNodes, false);
   auto hi_elemToNode_host = Kokkos::create_mirror_view(hi_elemToNode);
   Kokkos::deep_copy(hi_elemToNode_host, hi_elemToNode);
   auto lo_elemToNode_host = Kokkos::create_mirror_view(lo_elemToNode);
-  for (size_t i = 0; i < numElem; i++)
+  for (size_t i = 0; i < numElem; i++) {
     for (size_t j = 0; j < lo_nperel; j++) {
       // std::cout << "hi elem id: " << i << std::endl;
       LO lid = hi_elemToNode_host(i, lo_node_in_hi[j]);
@@ -421,6 +424,8 @@ void BuildLoElemToNode(const LOFieldContainer &hi_elemToNode,
         
           // node should be flagged as owned.
           // NOTE: For 2d problems there are two dofs per node.
+          // hi_elemeToNode get the node and we need to convert to dof
+          // std::cout << "node: " <<  hi_elemToNode_host(i, lo_node_in_hi[j]) << " from hi is low" << std::endl;
           is_low_order[2 * hi_elemToNode_host(i, lo_node_in_hi[j])] = true;  // This can overwrite and that is OK.
           is_low_order[1 + 2 * hi_elemToNode_host(i, lo_node_in_hi[j])] = true;  // This can overwrite and that is OK.
         }
@@ -436,6 +441,7 @@ void BuildLoElemToNode(const LOFieldContainer &hi_elemToNode,
         }
       }
     }
+  }
   std::cout << "lo_elemToNode_host: " << std::endl;
   for (int i = 0; i < lo_elemToNode_host.extent(0); ++i) {
     for (int j = 0; j < lo_elemToNode_host.extent(1); ++j) {
@@ -443,6 +449,12 @@ void BuildLoElemToNode(const LOFieldContainer &hi_elemToNode,
     }
     std::cout << std::endl;
   }
+  std::cout << "is_low_order: " << std::endl;
+  for (const auto& i : is_low_order) {
+    std::cout << i << " ";
+  }
+  std::cout << std::endl;
+
   // Count the number of lo owned nodes, generating a local index for lo nodes
   lo_numOwnedNodes   = 0;
   size_t lo_numNodes = 0;
@@ -455,7 +467,7 @@ void BuildLoElemToNode(const LOFieldContainer &hi_elemToNode,
   // counting variable 'lo_numNodes'.
   // NOTE: Dirichlet nodes are excluded.
   for (size_t i = 0; i < hi_numNodes; i++)
-    if (is_low_order[i]) {
+    if (is_low_order[i] && hi_nodeIsOwned[i]) {
       // std::cout << "is_low_order[i]: " << i << ": " << is_low_order[i] << std::endl;
       hi_to_lo_map[i] = lo_numNodes;
       lo_numNodes++;
@@ -488,7 +500,7 @@ void BuildLoElemToNode(const LOFieldContainer &hi_elemToNode,
       if (lo_elemToNode_host(i, j) != LOINVALID) {
         // std::cout << "hi_to_lo_map[lo_elemToNode_host(i, j) " << "(" << i << ", " << j << ") "
         // << hi_to_lo_map[lo_elemToNode_host(i, j)] << std::endl;
-        // NOTE: Divide by two (num dof per node) to go from dof numbering to node numbering
+        // NOTE: get node from hi and convert it to dof by multiplying by blockSize.
         if (blockSize == 2)
           lo_elemToNode_host(i, j) = hi_to_lo_map[blockSize * lo_elemToNode_host(i, j)] / blockSize;
         else
@@ -883,12 +895,15 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
   //  1) domainMap == rowMap
   //  2) Standard [e|t]petra ordering (namely the local unknowns are always numbered first).
   // This routine does not work in general.
+  // NOTE: Since it is based on the system matrix, it is dof based.
+  // TODO: Not consistent with the 'elemToNode'
   RCP<const Map> rowMap    = A->getRowMap();
   RCP<const Map> colMap    = Acrs.getColMap();
   Teuchos::RCP<Teuchos::FancyOStream> out = Teuchos::fancyOStream(Teuchos::rcpFromRef(std::cout));
-  // std::cout << "row map: " << *rowMap << std::endl;
-  // std::cout << "col map: " << std::endl;
+  // std::cout << "Acrs col map: (domain)" << *colMap << std::endl;
   // colMap->describe(*out, Teuchos::VERB_EXTREME);
+  // std::cout << "A row map: " << *rowMap << std::endl;
+  // rowMap->describe(*out, Teuchos::VERB_EXTREME);
   // std::cout << "A matrix: " << std::endl;
   // A->describe(*out, Teuchos::VERB_EXTREME);
   // std::cout << "Acsr matrix: " << std::endl;
@@ -900,7 +915,19 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
   LO num_owned_rows = 0;
   for (size_t i = 0; i < rowMap->getLocalNumElements(); i++) {
     if (rowMap->getGlobalElement(i) == colMap->getGlobalElement(i)) {
-      Pn_nodeIsOwned[i] = true;
+      int gid = rowMap->getGlobalElement(i);
+      // NOTE: when using Xpetra numbering style, each block will have unique GIDs.
+      // correct for sub-blocks with unique gids (not Thyra style)
+      int numDof = rowMap->getGlobalNumElements();
+      if (gid > numDof) {
+        // For example, considering the dofs:
+        // displ = [0 1 2 3 4 5 6 7]
+        // microrotation = [8 9 10 11]
+        // for the microrotation block, we have 4 dofs and the gid 8 should correspond to node 0.
+        // so we subtract the minGlobalIndex=8
+        gid -= rowMap->getMinGlobalIndex();
+      }
+      Pn_nodeIsOwned[gid] = true;
       num_owned_rows++;
    }
   }
@@ -950,14 +977,14 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
 
     // Generate lower-order element-to-node map
     MueLuIntrepid::BuildLoElemToNode(*Pn_elemToNode, Pn_nodeIsOwned, lo_node_in_hi, hi_isDirichletCol->getData(0), blockSize, *P1_elemToNode, P1_nodeIsOwned, hi_to_lo_map, P1_numOwnedNodes);
-    std::cout << "P1_elemToNode: " << std::endl;
+    std::cout << "rank" << rowMap->getComm()->getRank() << " P1_elemToNode: " << std::endl;
     for (int i = 0; i < P1_elemToNode->extent(0); ++i) {
       for (int j = 0; j < P1_elemToNode->extent(1); ++j) {
         std::cout << (*P1_elemToNode)(i, j) << " ";
       }
       std::cout << std::endl;
     }
-    std::cout << "P1_numOwnedNodes: " << P1_numOwnedNodes << std::endl;
+    std::cout << "rank" << rowMap->getComm()->getRank()  << " P1_numOwnedNodes: " << P1_numOwnedNodes << std::endl;
     assert(hi_to_lo_map.size() == colMap->getLocalNumElements());
   } else {
     // Get lo-order candidates
@@ -977,8 +1004,11 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
   /*******************/
   // Generate the P1_domainMap
   // HOW: Since we know how many each proc has, we can use the non-uniform contiguous map constructor to do the work for us
+  // TODO: The domain map does not work with Xpetra style, because it is sorted later
+  // and the repeated ids are removed
   RCP<const Map> P1_domainMap = MapFactory::Build(rowMap->lib(), Teuchos::OrdinalTraits<Xpetra::global_size_t>::invalid(), P1_numOwnedNodes, rowMap->getIndexBase(), rowMap->getComm());
-  // P1_domainMap->describe(*out, Teuchos::VERB_EXTREME);
+  std::cout << "rank" << rowMap->getComm()->getRank() << "P1_domainMap (row)" << std::endl;
+  P1_domainMap->describe(*out, Teuchos::VERB_EXTREME);
   MUELU_LEVEL_SET_IF_REQUESTED_OR_KEPT(coarseLevel, "CoarseMap", P1_domainMap);
 
   // Generate the P1_columnMap
