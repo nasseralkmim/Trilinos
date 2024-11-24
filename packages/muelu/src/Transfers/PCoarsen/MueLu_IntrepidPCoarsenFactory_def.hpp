@@ -897,6 +897,7 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
   // This routine does not work in general.
   // NOTE: Since it is based on the system matrix, it is dof based.
   // TODO: Not consistent with the 'elemToNode'
+  // NOTE: This only works for Xpetra (unique GID) numbering style in the maps
   RCP<const Map> rowMap    = A->getRowMap();
   RCP<const Map> colMap    = Acrs.getColMap();
   Teuchos::RCP<Teuchos::FancyOStream> out = Teuchos::fancyOStream(Teuchos::rcpFromRef(std::cout));
@@ -919,13 +920,14 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
       // NOTE: when using Xpetra numbering style, each block will have unique GIDs.
       // correct for sub-blocks with unique gids (not Thyra style)
       int numDof = rowMap->getGlobalNumElements();
+      int minAllGid = rowMap->getMinAllGlobalIndex();
       if (gid > numDof) {
         // For example, considering the dofs:
         // displ = [0 1 2 3 4 5 6 7]
         // microrotation = [8 9 10 11]
         // for the microrotation block, we have 4 dofs and the gid 8 should correspond to node 0.
-        // so we subtract the minGlobalIndex=8
-        gid -= rowMap->getMinGlobalIndex();
+        // so we subtract the minAllGID=8
+        gid -= minAllGid;
       }
       Pn_nodeIsOwned[gid] = true;
       num_owned_rows++;
@@ -1006,9 +1008,24 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
   // HOW: Since we know how many each proc has, we can use the non-uniform contiguous map constructor to do the work for us
   // TODO: The domain map does not work with Xpetra style, because it is sorted later
   // and the repeated ids are removed
-  RCP<const Map> P1_domainMap = MapFactory::Build(rowMap->lib(), Teuchos::OrdinalTraits<Xpetra::global_size_t>::invalid(), P1_numOwnedNodes, rowMap->getIndexBase(), rowMap->getComm());
-  std::cout << "rank" << rowMap->getComm()->getRank() << "P1_domainMap (row)" << std::endl;
+  // NOTE: Use row map to decide the offset of this map so each P operator has unique
+  // DOFS and it works with Xpetra-style numbering.
+  // Get the minimum GID in the row map (smallest high dof ID)o
+  // For example, first block has rows [0 .. 42], second [42 .. 62]. The first block
+  // prolongator uses 18 columns referring to 9 nodes with 2 dofs per node. So for the
+  // second prolongator we want 42/21 * 9 = 18.
+  int minAllGID = rowMap->getMinAllGlobalIndex();
+  int numHiNodes = rowMap->getGlobalNumElements() / blockSize;
+  int offset = P1_numOwnedNodes * minAllGID / numHiNodes;
+  
+  RCP<const Map> P1_domainMap = MapFactory::Build(rowMap->lib(), Teuchos::OrdinalTraits<Xpetra::global_size_t>::invalid(), P1_numOwnedNodes, offset, rowMap->getComm());
+  
+  std::cout << "rank " << rowMap->getComm()->getRank() << " P1_domainMap (colunm of P)" << std::endl;
   P1_domainMap->describe(*out, Teuchos::VERB_EXTREME);
+  std::cout << "rank " << rowMap->getComm()->getRank() << " P1 row map (is this XPETRA style (unique GIDs)????)" << std::endl;
+  A->getRowMap()->describe(*out, Teuchos::VERB_EXTREME);
+  
+  
   MUELU_LEVEL_SET_IF_REQUESTED_OR_KEPT(coarseLevel, "CoarseMap", P1_domainMap);
 
   // Generate the P1_columnMap
