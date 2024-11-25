@@ -227,11 +227,11 @@ void IntrepidGetP1NodeInHi(const Teuchos::RCP<Intrepid2::Basis<typename KokkosDe
     lo_node_in_hi.insert(lo_node_in_hi.end(), {0, degree});
   } else
     throw std::runtime_error("IntrepidPCoarsenFactory: Unknown element type");
-  std::cout << "lo_node_in_hi: ";
-  for (auto i : lo_node_in_hi) {
-      std::cout << i << " ";
-  }
-  std::cout << std::endl;
+  // std::cout << "lo_node_in_hi: ";
+  // for (auto i : lo_node_in_hi) {
+  //     std::cout << i << " ";
+  // }
+  // std::cout << std::endl;
 
   // Get coordinates of the hi_basis dof's
   Kokkos::resize(hi_DofCoords, hi_basis->getCardinality(), hi_basis->getBaseCellTopology().getDimension());
@@ -933,7 +933,8 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
       num_owned_rows++;
    }
   }
-  std::cout << "Pn_nodeIsOwned: ";
+  int rank = A->getRowMap()->getComm()->getRank();
+  std::cout << "rank: " << rank << " Pn_nodeIsOwned: ";
   for (const auto& k : Pn_nodeIsOwned) {
     std::cout << k << " ";
   }
