@@ -807,6 +807,7 @@ RCP<const ParameterList> IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrd
 
   validParamList->set<RCP<const FactoryBase>>("Nullspace", Teuchos::null, "Generating factory of the nullspace");
   validParamList->set<RCP<const FactoryBase>>("pcoarsen: element to node map", Teuchos::null, "Generating factory of the element to node map");
+  validParamList->set<bool>("pcoarsen: blocked xpetra style", Teuchos::null, "If P operator is part of a blocked operator with Xpetra numbering style");
   return validParamList;
 }
 
@@ -1007,17 +1008,20 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
   /*******************/
   // Generate the P1_domainMap
   // HOW: Since we know how many each proc has, we can use the non-uniform contiguous map constructor to do the work for us
-  // TODO: The domain map does not work with Xpetra style, because it is sorted later
-  // and the repeated ids are removed
-  // NOTE: Use row map to decide the offset of this map so each P operator has unique
-  // DOFS and it works with Xpetra-style numbering.
-  // Get the minimum GID in the row map (smallest high dof ID)o
-  // For example, first block has rows [0 .. 42], second [42 .. 62]. The first block
-  // prolongator uses 18 columns referring to 9 nodes with 2 dofs per node. So for the
-  // second prolongator we want 42/21 * 9 = 18.
-  int minAllGID = rowMap->getMinAllGlobalIndex();
-  int numHiNodes = rowMap->getGlobalNumElements() / blockSize;
-  int offset = P1_numOwnedNodes * minAllGID / numHiNodes;
+  int offset = 0;
+  pL.print(*out);
+  if (pL.get<bool>("pcoarsen: blocked xpetra style")) {
+    // NOTE: Use row map to decide the offset of this map so each P operator has unique
+    // DOFS and it works with Xpetra-style numbering.
+    // Get the minimum GID in the row map (smallest high dof ID)o
+    // For example, first block has rows [0 .. 42], second [42 .. 62]. The first block
+    // prolongator uses 18 columns referring to 9 nodes with 2 dofs per node. So for the
+    // second prolongator we want 42/21 * 9 = 18.
+    // NOTE: this offset should be applied only on blocked transfer operators.
+    int minAllGID = rowMap->getMinAllGlobalIndex();
+    int numHiNodes = rowMap->getGlobalNumElements() / blockSize;
+    offset = P1_numOwnedNodes * minAllGID / numHiNodes;
+  }
   
   RCP<const Map> P1_domainMap = MapFactory::Build(rowMap->lib(), Teuchos::OrdinalTraits<Xpetra::global_size_t>::invalid(), P1_numOwnedNodes, offset, rowMap->getComm());
   
