@@ -692,13 +692,18 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Generat
   std::vector<bool> touched(hi_map->getLocalNumElements(), false);
   Teuchos::Array<GO> col_gid(1);
   Teuchos::Array<SC> val(1);
-  auto hi_elemToNode_host = Kokkos::create_mirror_view(hi_elemToNode);
+  // auto hi_elemToNode_host = Kokkos::create_mirror_view(hi_elemToNode);
   Kokkos::deep_copy(hi_elemToNode_host, hi_elemToNode);
   for (size_t i = 0; i < Nelem; i++) {
     for (size_t j = 0; j < numFieldsHi; j++) {
       LO row_lid = hi_elemToNode_host(i, j);
-      GO row_gid = hi_map->getGlobalElement(row_lid);
-      if (hi_nodeIsOwned[row_lid] && !touched[row_lid]) {
+      // Convert node into dof to check dof ownership.
+      // For example:
+      // rank 0: eleToNode [4 1 5 8 10 11 18 17]
+      // node 4 correspond to dofs 8 and 9 in 2D, so we can check if rank owns 8.
+      GO row_gid = hi_map->getGlobalElement(row_lid * blockSize);
+      // NOTE: use LID to check if it is owned
+      if (hi_nodeIsOwned[row_lid * blockSize] && !touched[row_lid * blockSize]) {
         for (size_t k = 0; k < numFieldsLo; k++) {
           for (int dof = 0; dof < blockSize; dof++) {
             // Get the local id in P1's column map
@@ -729,7 +734,7 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Generat
   P->fillComplete(lo_domainMap, hi_map);
   // Teuchos::RCP<Teuchos::FancyOStream> out = Teuchos::fancyOStream(Teuchos::rcpFromRef(std::cout));
   // P->describe(*out, Teuchos::VERB_EXTREME);
-  // Xpetra::IO<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Write("Pc.mat", *P);
+  Xpetra::IO<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Write("Pc_bs" + std::to_string(blockSize) + ".m", *P);
 }
 
 /*********************************************************************************************************/
