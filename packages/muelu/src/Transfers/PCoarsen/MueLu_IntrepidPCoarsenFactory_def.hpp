@@ -392,8 +392,8 @@ void BuildLoElemToNode(const LOFieldContainer &hi_elemToNode,
   size_t hi_numNodes = hi_nodeIsOwned.size();
 
   size_t lo_nperel = lo_node_in_hi.size();
-  std::cout << "numElem (hi) " << numElem << std::endl;
-  std::cout << "num nodes (lo) " << lo_nperel << std::endl;
+  // std::cout << "numElem (hi) " << numElem << std::endl;
+  // std::cout << "num nodes (lo) " << lo_nperel << std::endl;
   Kokkos::resize(lo_elemToNode, numElem, lo_nperel);
 
   // Build lo_elemToNode (in the hi local index ordering) and flag owned ones
@@ -442,18 +442,18 @@ void BuildLoElemToNode(const LOFieldContainer &hi_elemToNode,
       }
     }
   }
-  std::cout << "lo_elemToNode_host: " << std::endl;
-  for (int i = 0; i < lo_elemToNode_host.extent(0); ++i) {
-    for (int j = 0; j < lo_elemToNode_host.extent(1); ++j) {
-      std::cout << lo_elemToNode_host(i, j) << " ";
-    }
-    std::cout << std::endl;
-  }
-  std::cout << "is_low_order: " << std::endl;
-  for (const auto& i : is_low_order) {
-    std::cout << i << " ";
-  }
-  std::cout << std::endl;
+  // std::cout << "lo_elemToNode_host: " << std::endl;
+  // for (int i = 0; i < lo_elemToNode_host.extent(0); ++i) {
+  //   for (int j = 0; j < lo_elemToNode_host.extent(1); ++j) {
+  //     std::cout << lo_elemToNode_host(i, j) << " ";
+  //   }
+  //   std::cout << std::endl;
+  // }
+  // std::cout << "is_low_order: " << std::endl;
+  // for (const auto& i : is_low_order) {
+  //   std::cout << i << " ";
+  // }
+  // std::cout << std::endl;
 
   // Count the number of lo owned nodes, generating a local index for lo nodes
   lo_numOwnedNodes   = 0;
@@ -473,11 +473,11 @@ void BuildLoElemToNode(const LOFieldContainer &hi_elemToNode,
       lo_numNodes++;
       if (hi_nodeIsOwned[i]) lo_numOwnedNodes++;
     }
-  std::cout << "hi_to_lo_map: ";
-  for (const auto &k : hi_to_lo_map) {
-    std::cout << k << " ";
-  }
-  std::cout << std::endl;
+  // std::cout << "hi_to_lo_map: ";
+  // for (const auto &k : hi_to_lo_map) {
+  //   std::cout << k << " ";
+  // }
+  // std::cout << std::endl;
 
   // Flag the owned lo nodes
   // NOTE: Loop over dofs hi dofs.
@@ -487,11 +487,11 @@ void BuildLoElemToNode(const LOFieldContainer &hi_elemToNode,
     if (is_low_order[i] && hi_nodeIsOwned[i])
       lo_nodeIsOwned[hi_to_lo_map[i]] = true;
   }
-  std::cout << "lo_nodeIsOwned: ";
-  for (const auto &k : lo_nodeIsOwned) {
-    std::cout << k << " ";
-  }
-  std::cout << std::endl;
+  // std::cout << "lo_nodeIsOwned: ";
+  // for (const auto &k : lo_nodeIsOwned) {
+  //   std::cout << k << " ";
+  // }
+  // std::cout << std::endl;
 
   // Translate lo_elemToNode to a lo local index
   // TODO: Why do we need a local index?
@@ -507,13 +507,13 @@ void BuildLoElemToNode(const LOFieldContainer &hi_elemToNode,
           lo_elemToNode_host(i, j) = hi_to_lo_map[lo_elemToNode_host(i, j)];
         }
     }
-  std::cout << "lo_elemToNode_host: " << std::endl;
-  for (int i = 0; i < lo_elemToNode_host.extent(0); ++i) {
-    for (int j = 0; j < lo_elemToNode_host.extent(1); ++j) {
-      std::cout << lo_elemToNode_host(i, j) << " ";
-    }
-    std::cout << std::endl;
-  }
+  // std::cout << "lo_elemToNode_host: " << std::endl;
+  // for (int i = 0; i < lo_elemToNode_host.extent(0); ++i) {
+  //   for (int j = 0; j < lo_elemToNode_host.extent(1); ++j) {
+  //     std::cout << lo_elemToNode_host(i, j) << " ";
+  //   }
+  //   std::cout << std::endl;
+  // }
   Kokkos::deep_copy(lo_elemToNode, lo_elemToNode_host);
 
   // Check for the [E|T]petra column map ordering property, namely LIDs for owned nodes should all appear first.
@@ -671,7 +671,35 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Generat
   typedef typename Teuchos::ScalarTraits<SC>::halfPrecision SClo;
   typedef typename Teuchos::ScalarTraits<SClo>::magnitudeType MT;
   MT effective_zero = Teuchos::ScalarTraits<MT>::eps();
-  
+
+  // Get process ID from map
+  int pid = hi_map->getComm()->getRank();
+
+  // Print hi_elemToNode
+  std::cout << "rank: " << pid << " hi_elemToNode:" << std::endl;
+  auto hi_elemToNode_host = Kokkos::create_mirror_view(hi_elemToNode); 
+  Kokkos::deep_copy(hi_elemToNode_host, hi_elemToNode);
+  for (size_t i = 0; i < hi_elemToNode.extent(0); i++) {
+    std::cout << "rank: " << pid << " element " << i << ": ";
+    for (size_t j = 0; j < hi_elemToNode.extent(1); j++) {
+      std::cout << hi_elemToNode_host(i,j) << " ";
+    }
+    std::cout << std::endl;
+  }
+
+  // Print hi_nodeIsOwned
+  std::cout << "rank: " << pid << " hi_nodeIsOwned:" << std::endl;
+  for (size_t i = 0; i < hi_nodeIsOwned.size(); i++) {
+    std::cout << hi_nodeIsOwned[i];
+  }
+  std::cout << std::endl;
+  // Print hi_to_lo_map
+  std::cout << "rank: " << pid << " hi_to_lo_map:" << std::endl;
+  for (size_t i = 0; i < hi_to_lo_map.size(); i++) {
+    std::cout << hi_to_lo_map[i] << " ";
+  }
+  std::cout << std::endl;
+
   // Add a strided map
   std::vector<size_t> strideInfo;
   strideInfo.push_back(blockSize);
@@ -681,7 +709,7 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Generat
   P                   = rcp(new CrsMatrixWrap(stridedMap, lo_colMap, numFieldsHi));  // FIXLATER: Need faster fill
   RCP<CrsMatrix> Pcrs = rcp_dynamic_cast<CrsMatrixWrap>(P)->getCrsMatrix();
   P->CreateView("stridedMaps", stridedMap, stridedMap);
-  std::cout << "P has strided map? " << P->IsView("stridedMaps") << std::endl;
+  // std::cout << "rank: " << pid << " P has strided map? " << P->IsView("stridedMaps") << std::endl;
 
   // Slow-ish fill
   // NOTE: Loop over number of high-elements. Then loop over number of high-nodes. Row
@@ -711,22 +739,22 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Generat
             // plug the hi-node into the map to find the low-dof. The low-dof already
             // represents the right column for the prolongator operator.
             LO col_lid = hi_to_lo_map[hi_elemToNode_host(i, lo_node_in_hi[k]) * blockSize + dof];
-            // std::cout << "lo-node: " << k << " effect on hi-node: " << j << " from ele: " << i << " (hi)row: " << row_gid * blockSize + dof << " (lo)col: " << col_lid;
+            std::cout << "pid: " << pid << " lo-node (hi numbering): " << hi_elemToNode_host(i, lo_node_in_hi[k]) << " effect on hi-node " << row_gid / blockSize << " (row of P): " << row_gid + dof << " (lo)col: " << col_lid;
             if (col_lid == LOINVALID) {
-              // std::cout << std::endl;
+              std::cout << std::endl;
               continue;
             }
 
             col_gid[0] = {lo_colMap->getGlobalElement(col_lid)};
-            // std::cout << " col_gid: " << col_gid[0] << std::endl;
             val[0]     = LoValues_at_HiDofs_host(k, j);
+            std::cout << " col_gid: " << col_gid[0] << "value: " << val[0] << std::endl;
 
             // Skip near-zeros
             if (Teuchos::ScalarTraits<SC>::magnitude(val[0]) >= effective_zero)
-              P->insertGlobalValues(row_gid * blockSize + dof, col_gid(), val());
+              P->insertGlobalValues(row_gid + dof, col_gid(), val());
           }
         }
-        touched[row_lid] = true;
+        touched[row_lid * blockSize] = true;
       }
     }
 
@@ -1055,7 +1083,7 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
   /*******************/
   // Zero out the Dirichlet rows in P
   Utilities::ZeroDirichletRows(finalP, A_dirichletRows);
-  Xpetra::IO<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Write("P_c.m", *finalP);
+  // Xpetra::IO<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Write("P_c.m", *finalP);
 
   /*******************/
   // Build the nullspace
