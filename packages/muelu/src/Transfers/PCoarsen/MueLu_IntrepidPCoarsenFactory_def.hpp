@@ -27,6 +27,7 @@
 #include "MueLu_PerfUtils.hpp"
 #include "MueLu_Utilities.hpp"
 
+#include "Teuchos_ArrayViewDecl.hpp"
 #include "Teuchos_RCPDecl.hpp"
 #include "Teuchos_ScalarTraits.hpp"
 
@@ -552,7 +553,10 @@ void GenerateColMapFromImport(const Xpetra::Import<LocalOrdinal, GlobalOrdinal, 
   // Figure out the GIDs of my non-owned P1 nodes
   // HOW: We can build a GOVector(domainMap) and fill the values with either invalid() or the P1 domainMap.GID() for that guy.
   // Then we can use A's importer to get a GOVector(colMap) with that information.
-
+  // Print detailed map info
+  Teuchos::RCP<Teuchos::FancyOStream> out = Teuchos::fancyOStream(Teuchos::rcpFromRef(std::cout));
+  hi_columnMap->describe(*out, Teuchos::VERB_EXTREME);
+  
   // NOTE: This assumes rowMap==colMap and [E|T]petra ordering of all the locals first in the colMap
   RCP<GOVector> dvec = Xpetra::VectorFactory<GO, LO, GO, NO>::Build(hi_domainMap);
   {
@@ -724,41 +728,96 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Generat
   Kokkos::deep_copy(hi_elemToNode_host, hi_elemToNode);
   for (size_t i = 0; i < Nelem; i++) {
     for (size_t j = 0; j < numFieldsHi; j++) {
-      LO row_lid = hi_elemToNode_host(i, j);
-      // Convert node into dof to check dof ownership.
+      GO nodeId_hi = hi_elemToNode_host(i, j);
+      GO dofId_hi = nodeId_hi * blockSize;
       // For example:
       // rank 0: eleToNode [4 1 5 8 10 11 18 17]
       // node 4 correspond to dofs 8 and 9 in 2D, so we can check if rank owns 8.
-      GO row_gid = hi_map->getGlobalElement(row_lid * blockSize);
-      // NOTE: use LID to check if it is owned
-      if (hi_nodeIsOwned[row_lid * blockSize] && !touched[row_lid * blockSize]) {
-        for (size_t k = 0; k < numFieldsLo; k++) {
-          for (int dof = 0; dof < blockSize; dof++) {
+      // NOTE: with Xpetra numbering the dofId is already the global ID
+      // For example, blocked system:
+      // first block: rank 0: gid = [0 1 6 7 8 9 ...]
+      //                                     ^-------- select
+      //                   1:       [2 3 4 5 10 11 ...]
+      // when we are at node 4, this means dof 8 (block size * 4), this is the right P row.
+      // second block: rank 0: gid = [42 45 46 ...]
+      //                                    ^------- select
+      //                    1:       [43 44 47 ...]
+      // now, node 4 should correspond to dof GID 46.
+      // Using offset = 42 (= minAllGid) we can check 46-42=4
+      // Therefore we use P row 46.
+      GO offset = hi_map->getMinAllGlobalIndex();
+      GO row_gid = dofId_hi + offset;
+      // Check if we own this row
+      if (hi_nodeIsOwned[dofId_hi] && !touched[dofId_hi]) {
+        for (int dof = 0; dof < blockSize; dof++) {
+
+          // Temporary arrays to store entries before insertion
+          std::vector<GO> cols;
+          std::vector<SC> vals;
+        
+          for (size_t k = 0; k < numFieldsLo; k++) {
             // Get the local id in P1's column map
             // NOTE: 'hi_elemToNode' is node based, we then convert it to dof based and
             // plug the hi-node into the map to find the low-dof. The low-dof already
             // represents the right column for the prolongator operator.
-            LO col_lid = hi_to_lo_map[hi_elemToNode_host(i, lo_node_in_hi[k]) * blockSize + dof];
-            std::cout << "pid: " << pid << " lo-node (hi numbering): " << hi_elemToNode_host(i, lo_node_in_hi[k]) << " effect on hi-node " << row_gid / blockSize << " (row of P): " << row_gid + dof << " (lo)col: " << col_lid;
-            if (col_lid == LOINVALID) {
+            LO nodeId_lo = hi_elemToNode_host(i, lo_node_in_hi[k]);
+            LO dofId_lo = nodeId_lo * blockSize + dof;
+            LO col_lid = hi_to_lo_map[dofId_lo];
+            std::cout << "pid: " << pid ;
+            std::cout << " hi-node: " << row_gid / blockSize;
+            std::cout << " by lo-node: " << nodeId_lo;
+            std::cout << " row: " << row_gid + dof << " col: " << col_lid;
+
+            GO col_gid;
+            SC val = LoValues_at_HiDofs_host(k, j);
+            // col_gid[0] = {lo_colMap->getGlobalElement(col_lid)};
+            // val[0]     = LoValues_at_HiDofs_host(k, j);
+            
+            if (col_lid == LOINVALID && val != 0.5) {
               std::cout << std::endl;
               continue;
-            }
-
-            col_gid[0] = {lo_colMap->getGlobalElement(col_lid)};
-            val[0]     = LoValues_at_HiDofs_host(k, j);
-            std::cout << " col_gid: " << col_gid[0] << "value: " << val[0] << std::endl;
-
+            } else if (col_lid == LOINVALID && val == 0.5) {
+              // invalid means dirichlet or not owned
+              // if it is not owned but the value is 0.5, it means that it is in a column not owned by this rank
+              col_gid = dofId_lo + offset;
+            } else
+              col_gid = lo_colMap->getGlobalElement(col_lid);
+          
+            
+            std::cout << " col_gid: " << col_gid << "value: " << val << std::endl;
             // Skip near-zeros
-            if (Teuchos::ScalarTraits<SC>::magnitude(val[0]) >= effective_zero)
-              P->insertGlobalValues(row_gid + dof, col_gid(), val());
+            if (Teuchos::ScalarTraits<SC>::magnitude(val) >= effective_zero) {
+              cols.push_back(col_gid);
+              vals.push_back(val);
+              // P->insertGlobalValues(row_gid + dof, col_gid(), val());
+            }
           }
+
+         // Insert all entries for this row at once
+         if (cols.size() > 0) {
+           P->insertGlobalValues(row_gid + dof, 
+                                 Teuchos::ArrayView<GO>(cols.data(), cols.size()),
+                                 Teuchos::ArrayView<SC>(vals.data(), vals.size()));
+         }
+         std::cout << "row " << row_gid + dof << " cols: ";
+         for (const auto& col : cols) {
+           std::cout << col << " ";
+         }
+         std::cout << std::endl;
+         
+         std::cout << "row " << row_gid + dof << " vals: ";
+         for (const auto& val : vals) {
+           std::cout << val << " ";
+         }
+         std::cout << std::endl;
+
+         // mark this row as touched
+         touched[dofId_hi + dof] = true; 
         }
-        touched[row_lid * blockSize] = true;
       }
     }
-
   }
+  
   P->fillComplete(lo_domainMap, hi_map);
   // Teuchos::RCP<Teuchos::FancyOStream> out = Teuchos::fancyOStream(Teuchos::rcpFromRef(std::cout));
   // P->describe(*out, Teuchos::VERB_EXTREME);
@@ -900,7 +959,7 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
 
   // Block size defines how many dofs per node
   int blockSize = A->GetFixedBlockSize();
-  std::cout << "block size: " << blockSize << std::endl;
+  // std::cout << "block size: " << blockSize << std::endl;
   
   /*******************/
   // FIXME LATER: Allow these to be manually specified instead of Intrepid
@@ -917,13 +976,13 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
   /*******************/
   // Get the higher-order element-to-node map
   const Teuchos::RCP<FCi> Pn_elemToNode = Get<Teuchos::RCP<FCi>>(fineLevel, "pcoarsen: element to node map");
-  std::cout << "Pn_elemToNode: ";
-  for (int i = 0; i < Pn_elemToNode->extent(0); ++i) {
-    for (int j = 0; j < Pn_elemToNode->extent(1); ++j) {
-      std::cout << (*Pn_elemToNode)(i, j) << " ";
-    }
-    std::cout << std::endl;
-  }
+  // std::cout << "Pn_elemToNode: ";
+  // for (int i = 0; i < Pn_elemToNode->extent(0); ++i) {
+  //   for (int j = 0; j < Pn_elemToNode->extent(1); ++j) {
+  //     std::cout << (*Pn_elemToNode)(i, j) << " ";
+  //   }
+  //   std::cout << std::endl;
+  // }
   // Calculate node ownership (the quick and dirty way)
   // NOTE: This exploits two things:
   //  1) domainMap == rowMap
@@ -937,7 +996,7 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
   Teuchos::RCP<Teuchos::FancyOStream> out = Teuchos::fancyOStream(Teuchos::rcpFromRef(std::cout));
   // std::cout << "Acrs col map: (domain)" << *colMap << std::endl;
   // colMap->describe(*out, Teuchos::VERB_EXTREME);
-  // std::cout << "A row map: " << *rowMap << std::endl;
+  // std::cout << "A row map (same as P row): " << *rowMap << std::endl;
   // rowMap->describe(*out, Teuchos::VERB_EXTREME);
   // std::cout << "A matrix: " << std::endl;
   // A->describe(*out, Teuchos::VERB_EXTREME);
@@ -1014,14 +1073,33 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
 
     // Generate lower-order element-to-node map
     MueLuIntrepid::BuildLoElemToNode(*Pn_elemToNode, Pn_nodeIsOwned, lo_node_in_hi, hi_isDirichletCol->getData(0), blockSize, *P1_elemToNode, P1_nodeIsOwned, hi_to_lo_map, P1_numOwnedNodes);
-    std::cout << "rank" << rowMap->getComm()->getRank() << " P1_elemToNode: " << std::endl;
-    for (int i = 0; i < P1_elemToNode->extent(0); ++i) {
-      for (int j = 0; j < P1_elemToNode->extent(1); ++j) {
-        std::cout << (*P1_elemToNode)(i, j) << " ";
-      }
-      std::cout << std::endl;
-    }
-    std::cout << "rank" << rowMap->getComm()->getRank()  << " P1_numOwnedNodes: " << P1_numOwnedNodes << std::endl;
+    // std::cout << "rank" << rowMap->getComm()->getRank() << " P1_elemToNode: " << std::endl;
+    // for (int i = 0; i < P1_elemToNode->extent(0); ++i) {
+    //   for (int j = 0; j < P1_elemToNode->extent(1); ++j) {
+    //     std::cout << (*P1_elemToNode)(i, j) << " ";
+    //   }
+    //   std::cout << std::endl;
+    // }
+    // std::cout << "rank: " << rank << " P1_nodeIsOwned: ";
+    // for (const auto& k : P1_nodeIsOwned) {
+    //   std::cout << k << " ";
+    // }
+    // std::cout << std::endl;
+    // std::cout << "size " << P1_nodeIsOwned.size() << std::endl;
+    
+    // std::cout << "rank: " << rank << " lo_node_in_hi: ";
+    // for (const auto& k : lo_node_in_hi) {
+    //   std::cout << k << " ";
+    // }
+    // std::cout << std::endl;
+    
+    // std::cout << "rank: " << rank << " hi_to_lo_map: ";
+    // for (const auto& k : hi_to_lo_map) {
+    //   std::cout << k << " ";
+    // }
+    // std::cout << std::endl;
+
+    // std::cout << "rank" << rowMap->getComm()->getRank()  << " P1_numOwnedNodes: " << P1_numOwnedNodes << std::endl;
     assert(hi_to_lo_map.size() == colMap->getLocalNumElements());
   } else {
     // Get lo-order candidates
@@ -1042,7 +1120,7 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
   // Generate the P1_domainMap
   // HOW: Since we know how many each proc has, we can use the non-uniform contiguous map constructor to do the work for us
   int offset = 0;
-  pL.print(*out);
+  // pL.print(*out);
   if (pL.get<bool>("pcoarsen: blocked xpetra style")) {
     // NOTE: Use row map to decide the offset of this map so each P operator has unique
     // DOFS and it works with Xpetra-style numbering.
@@ -1053,15 +1131,45 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
     // NOTE: this offset should be applied only on blocked transfer operators.
     int minAllGID = rowMap->getMinAllGlobalIndex();
     int numHiNodes = rowMap->getGlobalNumElements() / blockSize;
-    offset = P1_numOwnedNodes * minAllGID / numHiNodes;
+    // if (minAllGID == 42)
+    //   offset = 16;
+    // else if (minAllGID == 63)
+    //   offset = 25;
+    // offset         = P1_nodeIsOwned.size() * minAllGID / numHiNodes;
+    offset         = minAllGID;
   }
+  std::cout << "Create map with offset: " << offset << std::endl;
+
+  // build domain map considering the first P1_numOwnedNodes GIDs from the row map
+  // For example:
+  // rowMap GID: rank 0: [0 1         6 7      10 11            ] -> owns 3 nodes
+  //                  1: [    2 3 4 5     8 9        12 13 14 15] -> owns 6 nodes (6 * blocksize dofs)
+  // NOTE: this assumes that the element is numbered with the linear type first then the
+  // quadratic nodes.
+  std::vector<GO> loGIDList;
+  const Teuchos::ArrayView<const GO> hiGIDList = rowMap->getLocalElementList();
+  for (size_t i = 0; i < hiGIDList.size() && loGIDList.size() < P1_numOwnedNodes; i++) {
+    if (hi_to_lo_map[hiGIDList[i]] != -1) {
+      loGIDList.push_back(hiGIDList[i]);
+    }
+  }
+  Teuchos::ArrayView<GO> loGIDav(&loGIDList[0], loGIDList.size());
+  for (const auto& gid : loGIDList) {
+    std::cout << gid << " ";
+  }
+  std::cout << std::endl;
+
+  RCP<const Map> P1_domainMap = MapFactory::Build(rowMap->lib(),
+                                                  Teuchos::OrdinalTraits<Xpetra::global_size_t>::invalid(),
+                                                  loGIDav,
+                                                  offset,
+                                                  rowMap->getComm());
+  // RCP<const Map> P1_domainMap = MapFactory::Build(rowMap->lib(), Teuchos::OrdinalTraits<Xpetra::global_size_t>::invalid(), P1_numOwnedNodes, offset, rowMap->getComm());
   
-  RCP<const Map> P1_domainMap = MapFactory::Build(rowMap->lib(), Teuchos::OrdinalTraits<Xpetra::global_size_t>::invalid(), P1_numOwnedNodes, offset, rowMap->getComm());
-  
-  std::cout << "rank " << rowMap->getComm()->getRank() << " P1_domainMap (colunm of P)" << std::endl;
-  P1_domainMap->describe(*out, Teuchos::VERB_EXTREME);
-  std::cout << "rank " << rowMap->getComm()->getRank() << " P1 row map (is this XPETRA style (unique GIDs)????)" << std::endl;
-  A->getRowMap()->describe(*out, Teuchos::VERB_EXTREME);
+  // std::cout << "rank " << rowMap->getComm()->getRank() << " P1_domainMap (colunm of P)" << std::endl;
+  // P1_domainMap->describe(*out, Teuchos::VERB_EXTREME);
+  // std::cout << "rank " << rowMap->getComm()->getRank() << " P1 row map (is this XPETRA style (unique GIDs)????)" << std::endl;
+  // A->getRowMap()->describe(*out, Teuchos::VERB_EXTREME);
   
   
   MUELU_LEVEL_SET_IF_REQUESTED_OR_KEPT(coarseLevel, "CoarseMap", P1_domainMap);
@@ -1072,6 +1180,10 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
     P1_colMap = P1_domainMap;
   else
     MueLuIntrepid::GenerateColMapFromImport<LO, GO, NO>(*Acrs.getCrsGraph()->getImporter(), hi_to_lo_map, *P1_domainMap, P1_nodeIsOwned.size(), P1_colMap);
+  std::cout << "rank " << rowMap->getComm()->getRank() << " P1_colMap " << std::endl;
+  P1_colMap->describe(*out, Teuchos::VERB_EXTREME);
+  std::cout << "rank " << rowMap->getComm()->getRank() << " P1_domainMap " << std::endl;
+  P1_domainMap->describe(*out, Teuchos::VERB_EXTREME);
 
   /*******************/
   // Generate the coarsening
