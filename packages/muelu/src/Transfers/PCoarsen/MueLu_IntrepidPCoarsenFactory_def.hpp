@@ -469,30 +469,41 @@ void BuildLoElemToNode(const LOFieldContainer &hi_elemToNode,
   // NOTE: Dirichlet nodes are excluded.
   for (size_t i = 0; i < hi_numNodes; i++)
     if (is_low_order[i] && hi_nodeIsOwned[i]) {
-      // std::cout << "is_low_order[i]: " << i << ": " << is_low_order[i] << std::endl;
+      // std::cout << "hi dof " << i << ": " << is_low_order[i] << std::endl;
       hi_to_lo_map[i] = lo_numNodes;
       lo_numNodes++;
-      if (hi_nodeIsOwned[i]) lo_numOwnedNodes++;
+      lo_numOwnedNodes++;
     }
-  // std::cout << "hi_to_lo_map: ";
-  // for (const auto &k : hi_to_lo_map) {
-  //   std::cout << k << " ";
-  // }
-  // std::cout << std::endl;
+  // Second pass: Handle ghost nodes
+  for (size_t i = 0; i < hi_numNodes; i++) {
+    if (is_low_order[i] && !hi_nodeIsOwned[i]) {
+      hi_to_lo_map[i] = lo_numNodes;
+      lo_numNodes++;
+    }
+  }
+  std::cout << "hi_to_lo_map: ";
+  for (const auto &k : hi_to_lo_map) {
+    std::cout << k << " ";
+  }
+  std::cout << std::endl;
 
   // Flag the owned lo nodes
   // NOTE: Loop over dofs hi dofs.
   // NOTE: 'lo_numNodes' also refer to low-order number of dofs.
-  lo_nodeIsOwned.resize(lo_numNodes, false);
+  lo_nodeIsOwned.resize(lo_numOwnedNodes, false);
   for (size_t i = 0; i < hi_numNodes; i++) {
-    if (is_low_order[i] && hi_nodeIsOwned[i])
-      lo_nodeIsOwned[hi_to_lo_map[i]] = true;
+    if (is_low_order[i]) {
+      LO lo_id = hi_to_lo_map[i];
+      if (lo_id != Teuchos::OrdinalTraits<LO>::invalid()) {
+        lo_nodeIsOwned[lo_id] = true;
+      }
+    }
   }
-  // std::cout << "lo_nodeIsOwned: ";
-  // for (const auto &k : lo_nodeIsOwned) {
-  //   std::cout << k << " ";
-  // }
-  // std::cout << std::endl;
+  std::cout << "lo_nodeIsOwned: ";
+  for (const auto &k : lo_nodeIsOwned) {
+    std::cout << k << " ";
+  }
+  std::cout << std::endl;
 
   // Translate lo_elemToNode to a lo local index
   // TODO: Why do we need a local index?
@@ -555,8 +566,11 @@ void GenerateColMapFromImport(const Xpetra::Import<LocalOrdinal, GlobalOrdinal, 
   // Then we can use A's importer to get a GOVector(colMap) with that information.
   // Print detailed map info
   Teuchos::RCP<Teuchos::FancyOStream> out = Teuchos::fancyOStream(Teuchos::rcpFromRef(std::cout));
+  std::cout << "hi_columnMap: " << std::endl;
   hi_columnMap->describe(*out, Teuchos::VERB_EXTREME);
-  
+  std::cout << "hi_domainMap: " << std::endl;
+  hi_domainMap->describe(*out, Teuchos::VERB_EXTREME);
+
   // NOTE: This assumes rowMap==colMap and [E|T]petra ordering of all the locals first in the colMap
   RCP<GOVector> dvec = Xpetra::VectorFactory<GO, LO, GO, NO>::Build(hi_domainMap);
   {
@@ -568,9 +582,13 @@ void GenerateColMapFromImport(const Xpetra::Import<LocalOrdinal, GlobalOrdinal, 
         dvec_data[i] = go_invalid;
     }
   }
+  *out << "domain vec: " << std::endl;
+  dvec->describe(*out, Teuchos::VERB_EXTREME);
 
   RCP<GOVector> cvec = Xpetra::VectorFactory<GO, LO, GO, NO>::Build(hi_columnMap, true);
   cvec->doImport(*dvec, hi_importer, Xpetra::ADD);
+  *out << "column vec: " << std::endl;
+  cvec->describe(*out, Teuchos::VERB_EXTREME);
 
   // Generate the lo_columnMap
   // HOW: We can use the local hi_to_lo_map from the GID's in cvec to generate the non-contiguous colmap ids.
@@ -584,6 +602,11 @@ void GenerateColMapFromImport(const Xpetra::Import<LocalOrdinal, GlobalOrdinal, 
       }
     }
   }
+  *out << "lo_col_data: " << std::endl;
+  for (const auto& val : lo_col_data) {
+    std::cout << val << " ";
+  }
+  std::cout << std::endl;
 
   lo_columnMap = Xpetra::MapFactory<LO, GO, NO>::Build(lo_domainMap.lib(), Teuchos::OrdinalTraits<Xpetra::global_size_t>::invalid(), lo_col_data(), lo_domainMap.getIndexBase(), lo_domainMap.getComm());
 }
@@ -1080,12 +1103,12 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
     //   }
     //   std::cout << std::endl;
     // }
-    // std::cout << "rank: " << rank << " P1_nodeIsOwned: ";
-    // for (const auto& k : P1_nodeIsOwned) {
-    //   std::cout << k << " ";
-    // }
-    // std::cout << std::endl;
-    // std::cout << "size " << P1_nodeIsOwned.size() << std::endl;
+    std::cout << "rank: " << rank << " P1_nodeIsOwned: ";
+    for (const auto& k : P1_nodeIsOwned) {
+      std::cout << k << " ";
+    }
+    std::cout << std::endl;
+    std::cout << "size " << P1_nodeIsOwned.size() << std::endl;
     
     // std::cout << "rank: " << rank << " lo_node_in_hi: ";
     // for (const auto& k : lo_node_in_hi) {
@@ -1148,9 +1171,10 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
   // quadratic nodes.
   std::vector<GO> loGIDList;
   const Teuchos::ArrayView<const GO> hiGIDList = rowMap->getLocalElementList();
-  for (size_t i = 0; i < hiGIDList.size() && loGIDList.size() < P1_numOwnedNodes; i++) {
-    if (hi_to_lo_map[hiGIDList[i]] != -1) {
-      loGIDList.push_back(hiGIDList[i]);
+  for (size_t i = 0; i < hiGIDList.size() && loGIDList.size() < P1_numOwnedNodes ; i++) {
+    LO hi_dof_id = hiGIDList[i];
+    if (hi_to_lo_map[hi_dof_id] != -1 && Pn_nodeIsOwned[hi_dof_id - offset]) {
+      loGIDList.push_back(hi_dof_id);
     }
   }
   Teuchos::ArrayView<GO> loGIDav(&loGIDList[0], loGIDList.size());
