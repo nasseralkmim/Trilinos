@@ -490,7 +490,7 @@ void BuildLoElemToNode(const LOFieldContainer &hi_elemToNode,
   // Flag the owned lo nodes
   // NOTE: Loop over dofs hi dofs.
   // NOTE: 'lo_numNodes' also refer to low-order number of dofs.
-  lo_nodeIsOwned.resize(lo_numOwnedNodes, false);
+  lo_nodeIsOwned.resize(lo_numNodes, false);
   for (size_t i = 0; i < hi_numNodes; i++) {
     if (is_low_order[i]) {
       LO lo_id = hi_to_lo_map[i];
@@ -566,10 +566,12 @@ void GenerateColMapFromImport(const Xpetra::Import<LocalOrdinal, GlobalOrdinal, 
   // Then we can use A's importer to get a GOVector(colMap) with that information.
   // Print detailed map info
   Teuchos::RCP<Teuchos::FancyOStream> out = Teuchos::fancyOStream(Teuchos::rcpFromRef(std::cout));
-  std::cout << "hi_columnMap: " << std::endl;
-  hi_columnMap->describe(*out, Teuchos::VERB_EXTREME);
-  std::cout << "hi_domainMap: " << std::endl;
-  hi_domainMap->describe(*out, Teuchos::VERB_EXTREME);
+  // std::cout << "hi_columnMap: " << std::endl;
+  // hi_columnMap->describe(*out, Teuchos::VERB_EXTREME);
+  // std::cout << "hi_domainMap: " << std::endl;
+  // hi_domainMap->describe(*out, Teuchos::VERB_EXTREME);''
+  std::cout << "lo_domainMap: " << std::endl;
+  lo_domainMap.describe(*out, Teuchos::VERB_EXTREME);
 
   // NOTE: This assumes rowMap==colMap and [E|T]petra ordering of all the locals first in the colMap
   RCP<GOVector> dvec = Xpetra::VectorFactory<GO, LO, GO, NO>::Build(hi_domainMap);
@@ -582,13 +584,13 @@ void GenerateColMapFromImport(const Xpetra::Import<LocalOrdinal, GlobalOrdinal, 
         dvec_data[i] = go_invalid;
     }
   }
-  *out << "domain vec: " << std::endl;
-  dvec->describe(*out, Teuchos::VERB_EXTREME);
+  // *out << "domain vec: " << std::endl;
+  // dvec->describe(*out, Teuchos::VERB_EXTREME);
 
   RCP<GOVector> cvec = Xpetra::VectorFactory<GO, LO, GO, NO>::Build(hi_columnMap, true);
   cvec->doImport(*dvec, hi_importer, Xpetra::ADD);
-  *out << "column vec: " << std::endl;
-  cvec->describe(*out, Teuchos::VERB_EXTREME);
+  // *out << "column vec: " << std::endl;
+  // cvec->describe(*out, Teuchos::VERB_EXTREME);
 
   // Generate the lo_columnMap
   // HOW: We can use the local hi_to_lo_map from the GID's in cvec to generate the non-contiguous colmap ids.
