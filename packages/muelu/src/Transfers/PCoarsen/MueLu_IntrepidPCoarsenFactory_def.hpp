@@ -776,16 +776,13 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Generat
       // Using offset = 42 (= minAllGid) we can check 46-42=4
       // Therefore we use P row 46.
       GO offset = hi_map->getMinAllGlobalIndex();
+      LO row_lid = hi_map->getLocalElement(dofId_hi + offset);
+      std::cout << "pid: " << pid << " row_lid " << row_lid << " dofId_hi " << dofId_hi << std::endl;  
       GO row_gid = dofId_hi + offset;
       // Check if we own this row
-      if (hi_nodeIsOwned[dofId_hi] && !touched[dofId_hi]) {
-        for (int dof = 0; dof < blockSize; dof++) {
-
-          // Temporary arrays to store entries before insertion
-          std::vector<GO> cols;
-          std::vector<SC> vals;
-        
-          for (size_t k = 0; k < numFieldsLo; k++) {
+      if (hi_nodeIsOwned[dofId_hi] && !touched[row_lid]) {
+        for (size_t k = 0; k < numFieldsLo; k++) {
+          for (int dof = 0; dof < blockSize; dof++) {
             // Get the local id in P1's column map
             // NOTE: 'hi_elemToNode' is node based, we then convert it to dof based and
             // plug the hi-node into the map to find the low-dof. The low-dof already
@@ -798,52 +795,22 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Generat
             std::cout << " by lo-node: " << nodeId_lo;
             std::cout << " row: " << row_gid + dof << " col: " << col_lid;
 
-            // GO col_gid;
-            // SC val = LoValues_at_HiDofs_host(k, j);
-            // col_gid[0] = {lo_colMap->getGlobalElement(col_lid)};
+            col_gid[0] = {lo_colMap->getGlobalElement(col_lid)};
             val[0]     = LoValues_at_HiDofs_host(k, j);
             
-            if (col_lid == LOINVALID && val[0] != 0.5) {
+            if (col_lid == LOINVALID) {
               std::cout << std::endl;
               continue;
-            } else if (col_lid == LOINVALID && val[0] == 0.5) {
-              // invalid means dirichlet or not owned
-              // if it is not owned but the value is 0.5, it means that it is in a column not owned by this rank
-              col_gid[0] = dofId_lo + offset;
-            } else
-              col_gid[0] = lo_colMap->getGlobalElement(col_lid);
+            } 
           
-            
-            std::cout << " col_gid: " << col_gid() << "value: " << val[0] << std::endl;
+            std::cout << " col_gid: " << col_gid[0] << "value: " << val[0] << std::endl;
             // Skip near-zeros
             if (Teuchos::ScalarTraits<SC>::magnitude(val[0]) >= effective_zero) {
-              // cols.push_back(col_gid);
-              // vals.push_back(val);
               P->insertGlobalValues(row_gid + dof, col_gid(), val());
             }
           }
-
-         // // Insert all entries for this row at once
-         // if (cols.size() > 0) {
-         //   P->insertGlobalValues(row_gid + dof, 
-         //                         Teuchos::ArrayView<GO>(cols.data(), cols.size()),
-         //                         Teuchos::ArrayView<SC>(vals.data(), vals.size()));
-         // }
-         // std::cout << "row " << row_gid + dof << " cols: ";
-         // for (const auto& col : cols) {
-         //   std::cout << col << " ";
-         // }
-         // std::cout << std::endl;
-         
-         // std::cout << "row " << row_gid + dof << " vals: ";
-         // for (const auto& val : vals) {
-         //   std::cout << val << " ";
-         // }
-         // std::cout << std::endl;
-
-         // mark this row as touched
-         touched[dofId_hi + dof] = true; 
         }
+        touched[row_lid] = true; 
       }
     }
   }
