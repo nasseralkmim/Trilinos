@@ -566,8 +566,8 @@ void GenerateColMapFromImport(const Xpetra::Import<LocalOrdinal, GlobalOrdinal, 
   // Then we can use A's importer to get a GOVector(colMap) with that information.
   // Print detailed map info
   Teuchos::RCP<Teuchos::FancyOStream> out = Teuchos::fancyOStream(Teuchos::rcpFromRef(std::cout));
-  // std::cout << "hi_columnMap: " << std::endl;
-  // hi_columnMap->describe(*out, Teuchos::VERB_EXTREME);
+  std::cout << "hi_columnMap: " << std::endl;
+  hi_columnMap->describe(*out, Teuchos::VERB_EXTREME);
   // std::cout << "hi_domainMap: " << std::endl;
   // hi_domainMap->describe(*out, Teuchos::VERB_EXTREME);''
   std::cout << "lo_domainMap: " << std::endl;
@@ -594,13 +594,18 @@ void GenerateColMapFromImport(const Xpetra::Import<LocalOrdinal, GlobalOrdinal, 
 
   // Generate the lo_columnMap
   // HOW: We can use the local hi_to_lo_map from the GID's in cvec to generate the non-contiguous colmap ids.
+  // NOTE: changed the logic, not sure if robust.
+  // HOW: use the hi_to_lo_map to construct lo column map.
+  // offset is needed to work with blocked P operator with Xpetra numbering style
+  LO offset = hi_domainMap->getMinAllGlobalIndex();
   Array<GO> lo_col_data(lo_columnMapLength);
   {
     ArrayRCP<GO> cvec_data = cvec->getDataNonConst(0);
     for (size_t i = 0, idx = 0; i < hi_columnMap->getLocalNumElements(); i++) {
       if (hi_to_lo_map[i] != lo_invalid) {
-        lo_col_data[idx] = cvec_data[i];
-        idx++;
+        LO lo_lid = hi_to_lo_map[i];
+        GO lo_gid = i + offset;
+        lo_col_data[lo_lid] = lo_gid;
       }
     }
   }
