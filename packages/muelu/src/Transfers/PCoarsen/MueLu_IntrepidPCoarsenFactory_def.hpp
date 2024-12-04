@@ -798,48 +798,48 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Generat
             std::cout << " by lo-node: " << nodeId_lo;
             std::cout << " row: " << row_gid + dof << " col: " << col_lid;
 
-            GO col_gid;
-            SC val = LoValues_at_HiDofs_host(k, j);
+            // GO col_gid;
+            // SC val = LoValues_at_HiDofs_host(k, j);
             // col_gid[0] = {lo_colMap->getGlobalElement(col_lid)};
-            // val[0]     = LoValues_at_HiDofs_host(k, j);
+            val[0]     = LoValues_at_HiDofs_host(k, j);
             
-            if (col_lid == LOINVALID && val != 0.5) {
+            if (col_lid == LOINVALID && val[0] != 0.5) {
               std::cout << std::endl;
               continue;
-            } else if (col_lid == LOINVALID && val == 0.5) {
+            } else if (col_lid == LOINVALID && val[0] == 0.5) {
               // invalid means dirichlet or not owned
               // if it is not owned but the value is 0.5, it means that it is in a column not owned by this rank
-              col_gid = dofId_lo + offset;
+              col_gid[0] = dofId_lo + offset;
             } else
-              col_gid = lo_colMap->getGlobalElement(col_lid);
+              col_gid[0] = lo_colMap->getGlobalElement(col_lid);
           
             
-            std::cout << " col_gid: " << col_gid << "value: " << val << std::endl;
+            std::cout << " col_gid: " << col_gid() << "value: " << val[0] << std::endl;
             // Skip near-zeros
-            if (Teuchos::ScalarTraits<SC>::magnitude(val) >= effective_zero) {
-              cols.push_back(col_gid);
-              vals.push_back(val);
-              // P->insertGlobalValues(row_gid + dof, col_gid(), val());
+            if (Teuchos::ScalarTraits<SC>::magnitude(val[0]) >= effective_zero) {
+              // cols.push_back(col_gid);
+              // vals.push_back(val);
+              P->insertGlobalValues(row_gid + dof, col_gid(), val());
             }
           }
 
-         // Insert all entries for this row at once
-         if (cols.size() > 0) {
-           P->insertGlobalValues(row_gid + dof, 
-                                 Teuchos::ArrayView<GO>(cols.data(), cols.size()),
-                                 Teuchos::ArrayView<SC>(vals.data(), vals.size()));
-         }
-         std::cout << "row " << row_gid + dof << " cols: ";
-         for (const auto& col : cols) {
-           std::cout << col << " ";
-         }
-         std::cout << std::endl;
+         // // Insert all entries for this row at once
+         // if (cols.size() > 0) {
+         //   P->insertGlobalValues(row_gid + dof, 
+         //                         Teuchos::ArrayView<GO>(cols.data(), cols.size()),
+         //                         Teuchos::ArrayView<SC>(vals.data(), vals.size()));
+         // }
+         // std::cout << "row " << row_gid + dof << " cols: ";
+         // for (const auto& col : cols) {
+         //   std::cout << col << " ";
+         // }
+         // std::cout << std::endl;
          
-         std::cout << "row " << row_gid + dof << " vals: ";
-         for (const auto& val : vals) {
-           std::cout << val << " ";
-         }
-         std::cout << std::endl;
+         // std::cout << "row " << row_gid + dof << " vals: ";
+         // for (const auto& val : vals) {
+         //   std::cout << val << " ";
+         // }
+         // std::cout << std::endl;
 
          // mark this row as touched
          touched[dofId_hi + dof] = true; 
@@ -989,7 +989,7 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
 
   // Block size defines how many dofs per node
   int blockSize = A->GetFixedBlockSize();
-  // std::cout << "block size: " << blockSize << std::endl;
+  std::cout << "block size: " << blockSize << std::endl;
   
   /*******************/
   // FIXME LATER: Allow these to be manually specified instead of Intrepid
