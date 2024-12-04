@@ -105,6 +105,7 @@ namespace MueLu {
     if (name == "pcoarsen: schedule") { ss << "<Parameter name=\"pcoarsen: schedule\" type=\"string\" value=" << value << "/>"; return ss.str(); }      
     if (name == "pcoarsen: hi basis") { ss << "<Parameter name=\"pcoarsen: hi basis\" type=\"string\" value=" << value << "/>"; return ss.str(); }      
     if (name == "pcoarsen: lo basis") { ss << "<Parameter name=\"pcoarsen: lo basis\" type=\"string\" value=" << value << "/>"; return ss.str(); }      
+    if (name == "pcoarsen: blocked xpetra style") { ss << "<Parameter name=\"pcoarsen: blocked xpetra style\" type=\"bool\" value=" << value << "/>"; return ss.str(); }      
     if (name == "smoother: neighborhood type") { ss << "<Parameter name=\"smoother: neighborhood type\" type=\"string\" value=" << value << "/>"; return ss.str(); }      
     if (name == "tentative: calculate qr") { ss << "<Parameter name=\"tentative: calculate qr\" type=\"bool\" value=" << value << "/>"; return ss.str(); }      
     if (name == "tentative: constant column sums") { ss << "<Parameter name=\"tentative: constant column sums\" type=\"bool\" value=" << value << "/>"; return ss.str(); }      
@@ -281,6 +282,7 @@ namespace MueLu {
   "<Parameter name=\"pcoarsen: schedule\" type=\"string\" value=\"\"/>"
   "<Parameter name=\"pcoarsen: hi basis\" type=\"string\" value=\"\"/>"
   "<Parameter name=\"pcoarsen: lo basis\" type=\"string\" value=\"\"/>"
+  "<Parameter name=\"pcoarsen: blocked xpetra style\" type=\"bool\" value=\"true\"/>"
   "<Parameter name=\"smoother: neighborhood type\" type=\"string\" value=\"\"/>"
   "<Parameter name=\"filtered matrix: use lumping\" type=\"bool\" value=\"true\"/>"
   "<Parameter name=\"filtered matrix: use spread lumping\" type=\"bool\" value=\"false\"/>"
@@ -831,6 +833,8 @@ namespace MueLu {
          ("pcoarsen: hi basis","pcoarsen: hi basis")
       
          ("pcoarsen: lo basis","pcoarsen: lo basis")
+                                                                 
+         ("pcoarsen: blocked xpetra style","pcoarsen: blocked xpetra style")
       
          ("smoother: neighborhood type","smoother: neighborhood type")
       

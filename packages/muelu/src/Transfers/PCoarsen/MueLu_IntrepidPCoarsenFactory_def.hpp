@@ -923,13 +923,13 @@ RCP<const ParameterList> IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrd
 #define SET_VALID_ENTRY(name) validParamList->setEntry(name, MasterList::getEntry(name))
   SET_VALID_ENTRY("pcoarsen: hi basis");
   SET_VALID_ENTRY("pcoarsen: lo basis");
+  SET_VALID_ENTRY("pcoarsen: blocked xpetra style");
 #undef SET_VALID_ENTRY
 
   validParamList->set<RCP<const FactoryBase>>("A", Teuchos::null, "Generating factory of the matrix A used during the prolongator smoothing process");
 
   validParamList->set<RCP<const FactoryBase>>("Nullspace", Teuchos::null, "Generating factory of the nullspace");
   validParamList->set<RCP<const FactoryBase>>("pcoarsen: element to node map", Teuchos::null, "Generating factory of the element to node map");
-  validParamList->set<bool>("pcoarsen: blocked xpetra style", Teuchos::null, "If P operator is part of a blocked operator with Xpetra numbering style");
   return validParamList;
 }
 
@@ -1150,7 +1150,7 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
   // Generate the P1_domainMap
   // HOW: Since we know how many each proc has, we can use the non-uniform contiguous map constructor to do the work for us
   int offset = 0;
-  // pL.print(*out);
+  pL.print(*out);
   if (pL.get<bool>("pcoarsen: blocked xpetra style")) {
     // NOTE: Use row map to decide the offset of this map so each P operator has unique
     // DOFS and it works with Xpetra-style numbering.
@@ -1161,10 +1161,6 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
     // NOTE: this offset should be applied only on blocked transfer operators.
     int minAllGID = rowMap->getMinAllGlobalIndex();
     int numHiNodes = rowMap->getGlobalNumElements() / blockSize;
-    // if (minAllGID == 42)
-    //   offset = 16;
-    // else if (minAllGID == 63)
-    //   offset = 25;
     // offset         = P1_nodeIsOwned.size() * minAllGID / numHiNodes;
     offset         = minAllGID;
   }
@@ -1180,10 +1176,11 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
   const Teuchos::ArrayView<const GO> hiGIDList = rowMap->getLocalElementList();
   for (size_t i = 0; i < hiGIDList.size() && loGIDList.size() < P1_numOwnedNodes ; i++) {
     LO hi_dof_id = hiGIDList[i];
-    if (hi_to_lo_map[hi_dof_id] != -1 && Pn_nodeIsOwned[hi_dof_id - offset]) {
+    if (hi_to_lo_map[hi_dof_id - offset] != -1 && Pn_nodeIsOwned[hi_dof_id - offset]) {
       loGIDList.push_back(hi_dof_id);
     }
   }
+  std::cout << "lo GID list" << std::endl;
   Teuchos::ArrayView<GO> loGIDav(&loGIDList[0], loGIDList.size());
   for (const auto& gid : loGIDList) {
     std::cout << gid << " ";
