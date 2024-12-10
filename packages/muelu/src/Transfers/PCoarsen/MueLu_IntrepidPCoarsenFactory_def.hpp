@@ -709,10 +709,12 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Generat
   // Get process ID from map
   int pid = hi_map->getComm()->getRank();
 
-  // Print hi_elemToNode
-  std::cout << "rank: " << pid << " hi_elemToNode:" << std::endl;
   auto hi_elemToNode_host = Kokkos::create_mirror_view(hi_elemToNode); 
   Kokkos::deep_copy(hi_elemToNode_host, hi_elemToNode);
+  
+#if 0
+  // Print hi_elemToNode
+  std::cout << "rank: " << pid << " hi_elemToNode:" << std::endl;
   for (size_t i = 0; i < hi_elemToNode.extent(0); i++) {
     std::cout << "rank: " << pid << " element " << i << ": ";
     for (size_t j = 0; j < hi_elemToNode.extent(1); j++) {
@@ -733,6 +735,7 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Generat
     std::cout << hi_to_lo_map[i] << " ";
   }
   std::cout << std::endl;
+#endif
 
   // Add a strided map
   std::vector<size_t> strideInfo;
@@ -777,7 +780,7 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Generat
       // Therefore we use P row 46.
       GO offset = hi_map->getMinAllGlobalIndex();
       LO row_lid = hi_map->getLocalElement(dofId_hi + offset);
-      std::cout << "pid: " << pid << " row_lid " << row_lid << " dofId_hi " << dofId_hi << std::endl;  
+      // std::cout << "pid: " << pid << " row_lid " << row_lid << " dofId_hi " << dofId_hi << std::endl;  
       GO row_gid = dofId_hi + offset;
       // Check if we own this row
       if (hi_nodeIsOwned[dofId_hi] && !touched[row_lid]) {
@@ -790,20 +793,20 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Generat
             LO nodeId_lo = hi_elemToNode_host(i, lo_node_in_hi[k]);
             LO dofId_lo = nodeId_lo * blockSize + dof;
             LO col_lid = hi_to_lo_map[dofId_lo];
-            std::cout << "pid: " << pid ;
-            std::cout << " hi-node: " << row_gid / blockSize;
-            std::cout << " by lo-node: " << nodeId_lo;
-            std::cout << " row: " << row_gid + dof << " col: " << col_lid;
+            // std::cout << "pid: " << pid ;
+            // std::cout << " hi-node: " << row_gid / blockSize;
+            // std::cout << " by lo-node: " << nodeId_lo;
+            // std::cout << " row: " << row_gid + dof << " col: " << col_lid;
 
             col_gid[0] = {lo_colMap->getGlobalElement(col_lid)};
             val[0]     = LoValues_at_HiDofs_host(k, j);
             
             if (col_lid == LOINVALID) {
-              std::cout << std::endl;
+              // std::cout << std::endl;
               continue;
             } 
           
-            std::cout << " col_gid: " << col_gid[0] << "value: " << val[0] << std::endl;
+            // std::cout << " col_gid: " << col_gid[0] << "value: " << val[0] << std::endl;
             // Skip near-zeros
             if (Teuchos::ScalarTraits<SC>::magnitude(val[0]) >= effective_zero) {
               P->insertGlobalValues(row_gid + dof, col_gid(), val());
@@ -1024,11 +1027,11 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
    }
   }
   int rank = A->getRowMap()->getComm()->getRank();
-  std::cout << "rank: " << rank << " Pn_nodeIsOwned: ";
-  for (const auto& k : Pn_nodeIsOwned) {
-    std::cout << k << " ";
-  }
-  std::cout << std::endl;
+  // std::cout << "rank: " << rank << " Pn_nodeIsOwned: ";
+  // for (const auto& k : Pn_nodeIsOwned) {
+  //   std::cout << k << " ";
+  // }
+  // std::cout << std::endl;
 
   // Used in all cases
   FC hi_DofCoords;
