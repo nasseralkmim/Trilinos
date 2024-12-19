@@ -757,8 +757,6 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Generat
   std::vector<bool> touched(hi_map->getLocalNumElements(), false);
   Teuchos::Array<GO> col_gid(1);
   Teuchos::Array<SC> val(1);
-  // auto hi_elemToNode_host = Kokkos::create_mirror_view(hi_elemToNode);
-  Kokkos::deep_copy(hi_elemToNode_host, hi_elemToNode);
   for (size_t i = 0; i < Nelem; i++) {
     for (size_t j = 0; j < numFieldsHi; j++) {
       GO nodeId_hi = hi_elemToNode_host(i, j);
