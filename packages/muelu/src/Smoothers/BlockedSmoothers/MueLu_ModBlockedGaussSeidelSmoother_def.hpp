@@ -421,6 +421,8 @@ namespace MueLu {
         RCP<MultiVector> B1_xtilde2 = domainMapExtractor_->getVector(0, rcpX->getNumVectors(), bDomainThyraMode);
         RCP<MultiVector> C1_xtilde3 = domainMapExtractor_->getVector(0, rcpX->getNumVectors(), bDomainThyraMode);
         RCP<MultiVector> F1_xtilde3 = domainMapExtractor_->getVector(1, rcpX->getNumVectors(), bDomainThyraMode);
+        RCP<MultiVector> Dinv_F1_xtilde3 = domainMapExtractor_->getVector(1, rcpX->getNumVectors(), bDomainThyraMode);
+        RCP<MultiVector> B1_Dinv_F1_xtilde3 = domainMapExtractor_->getVector(0, rcpX->getNumVectors(), bDomainThyraMode);
 
         Scalar AdampingFactor;
         Scalar DdampingFactor;
@@ -448,12 +450,14 @@ namespace MueLu {
           xhat2->update(DdampingFactor, *xhat2_temp1, zero);
         } else {
           xhat2->elementWiseMultiply(DdampingFactor, *diagA22inv_, *F1_xtilde3, zero);
+          Dinv_F1_xtilde3->elementWiseMultiply(one, *diagA22inv_, *F1_xtilde3, zero);
         }
         xhat2->update(one, *xtilde2, -one);
         
         // use the updated xhat2 to update \Delta \tilde{x}_1
         bA->getMatrix(0, 1)->apply(*xhat2, *B1_xtilde2);
         bA->getMatrix(0, 2)->apply(*xhat3, *C1_xtilde3);
+        bA->getMatrix(0, 1)->apply(*Dinv_F1_xtilde3, *B1_Dinv_F1_xtilde3);
 
         // since omega was already applied to \tilde{x}_2, we use 1 here
         if (useDiagInv) {
@@ -466,6 +470,7 @@ namespace MueLu {
         } else {
           xhat1->elementWiseMultiply(AdampingFactor, *diagA11inv_, *B1_xtilde2, zero);
           xhat1->elementWiseMultiply(AdampingFactor, *diagA11inv_, *C1_xtilde3, one);
+          xhat1->elementWiseMultiply(AdampingFactor, *diagA11inv_, *B1_Dinv_F1_xtilde3, -one);
         }
         xhat1->update(one, *xtilde1, -one); // \Delta \tilde{x}_1 - Ainv B_1 \Delta \tilde{x}_2
 
