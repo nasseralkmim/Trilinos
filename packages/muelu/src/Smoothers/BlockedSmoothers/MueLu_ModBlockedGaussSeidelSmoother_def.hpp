@@ -181,21 +181,20 @@ namespace MueLu {
     bool useSIMPLE = pL.get<bool>("UseSIMPLE");
     if (useSIMPLE) {
       *out << "Using modBGS with SIMPLE-like algorithm" << std::endl;
-      bA->getMatrix(0, 0)->getLocalDiagCopy(*diagA11Vector);
-      diagA11inv_ = Utilities::GetInverse(diagA11Vector);
-
-      bA->getMatrix(1, 1)->getLocalDiagCopy(*diagA22Vector);
-      diagA22inv_ = Utilities::GetInverse(diagA22Vector);
+      for (int i = 0; i < blockSize_; i++) {
+        Teuchos::RCP<Vector> AiiDiag = VectorFactory::Build(bA->getMatrix(i, i)->getRowMap());
+        bA->getMatrix(i, i)->getLocalDiagCopy(*AiiDiag);
+        diagAInvVector_[i] = Utilities::GetInverse(AiiDiag);
+      }
     }
     bool useSIMPLEC = pL.get<bool>("UseSIMPLEC");
     if (useSIMPLEC) {
       *out << "Using modBGS with SIMPLEC-like algorithm" << std::endl;
-      bA->getMatrix(0, 0)->getLocalDiagCopy(*diagA11Vector);
-      diagA11Vector = Utilities::GetLumpedMatrixDiagonal(*bA->getMatrix(0, 0));
-      diagA11inv_ = Utilities::GetInverse(diagA11Vector);
-      bA->getMatrix(1, 1)->getLocalDiagCopy(*diagA22Vector);
-      diagA22Vector = Utilities::GetLumpedMatrixDiagonal(*bA->getMatrix(1, 1));
-      diagA22inv_ = Utilities::GetInverse(diagA22Vector);
+      for (int i = 0; i < blockSize_; i++) {
+        Teuchos::RCP<Vector> AiiDiag = Utilities::GetLumpedMatrixDiagonal(*bA->getMatrix(i, i));
+        bA->getMatrix(i, i)->getLocalDiagCopy(*AiiDiag);
+        diagAInvVector_[i] = Utilities::GetInverse(AiiDiag);
+      }
     }
     
     // use eigenvalue damping only with "SIMPLE" approaches
