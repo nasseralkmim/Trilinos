@@ -206,21 +206,6 @@ namespace MueLu {
       *out << "A lambdaMax: " << AlambdaMax << std::endl;
       *out << "D lambdaMax: " << DlambdaMax << std::endl;
     }
-    bool useUpperTriangular = pL.get<bool>("UpperTriangular");
-    if (useUpperTriangular) {
-      *out << "Using modBGS with upper triangular" << std::endl;
-      if (useSIMPLE) {
-        *out << "Using modBGS with SIMPLE-like algorithm with upper triangular" << std::endl;
-        bA->getMatrix(2, 2)->getLocalDiagCopy(*diagA33Vector);
-        diagA33inv_ = Utilities::GetInverse(diagA33Vector);
-      }
-      if (useSIMPLEC) {
-        *out << "Using modBGS with SIMPLEC-like algorithm with upper triangular" << std::endl;
-        bA->getMatrix(2, 2)->getLocalDiagCopy(*diagA33Vector);
-        diagA33Vector = Utilities::GetLumpedMatrixDiagonal(*bA->getMatrix(2, 2));
-        diagA33inv_ = Utilities::GetInverse(diagA33Vector);
-      }
-     }
 
     bool useDiagInv = pL.get<bool>("UseDiagInverse");
     if ((useSIMPLE || useSIMPLEC) && useDiagInv) {
