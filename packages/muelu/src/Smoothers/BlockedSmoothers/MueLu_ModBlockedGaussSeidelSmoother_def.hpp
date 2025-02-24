@@ -487,8 +487,6 @@ namespace MueLu {
       RCP<MultiVector> xhat1 = bxhat->getMultiVector(0, bDomainThyraMode);
       RCP<MultiVector> xhat2 = bxhat->getMultiVector(1, bDomainThyraMode);
 
-      RCP<MultiVector> tempres = MultiVectorFactory::Build(rcpB->getMap(), rcpB->getNumVectors());
-
       // Clear solution from previos V cycles in case it is still stored
       if( InitialGuessIsZero==true )
         rcpX->putScalar(Teuchos::ScalarTraits<Scalar>::zero());
@@ -513,7 +511,10 @@ namespace MueLu {
 
         // 4. Solve this second problem considering specific Schur complement approximation by S = A_{22}
         Inverse_.at(1)->Apply(*xtilde2, *schurCompRHS);
+        // Update the solution for the second problem
+        xhat2->update(one, *xtilde2, zero);
 
+        // SIMPLE-like correction for the first problem variable
         bool useSIMPLE = pL.get<bool>("UseSIMPLE");
         bool useSIMPLEC = pL.get<bool>("UseSIMPLEC");
         if (useSIMPLE || useSIMPLEC) {
@@ -536,10 +537,12 @@ namespace MueLu {
             DdampingFactor = omega;
           }
 
+          // Update based on damping factor
+          xhat2->update(DdampingFactor, *xhat2, zero);
+          
           // use the updated xhat2 to update \Delta \tilde{x}_1
           bA->getMatrix(0, 1)->apply(*xhat2, *B1_xtilde2);
 
-          // since omega was already applied to \tilde{x}_2, we use 1 here
           bool useDiagInv = pL.get<bool>("UseDiagInverse");
           if (useDiagInv) {
             RCP<MultiVector> xhat1_temp1 = domainMapExtractor_->getVector(0, rcpX->getNumVectors(), bDomainThyraMode);
@@ -548,10 +551,9 @@ namespace MueLu {
           } else {
             xhat1->elementWiseMultiply(AdampingFactor, *diagAInvVector_[0], *B1_xtilde2, zero);
           }
-          xhat1->update(one, *xtilde1, -one); // \Delta \tilde{x}_1 - Ainv B_1 \Delta \tilde{x}_2
+          xhat1->update(one, *xtilde1, -one);
 
         } else {
-          xhat2->update(one, *xtilde2, zero);
           xhat1->update(one, *xtilde1, zero);
         }
 
