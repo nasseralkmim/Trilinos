@@ -122,7 +122,7 @@ namespace MueLu {
   template <class Scalar,class LocalOrdinal, class GlobalOrdinal, class Node>
   void ModBlockedGaussSeidelSmoother<Scalar, LocalOrdinal, GlobalOrdinal, Node>::DeclareInput(Level &currentLevel) const {
     // only works for 3x3 block
-    TEUCHOS_TEST_FOR_EXCEPTION(FactManager_.size() != 3, Exceptions::RuntimeError,"MueLu::ModBlockedGaussSeidelSmoother::DeclareInput: You have to declare two FactoryManagers with a \"Smoother\" object: One for predicting the primary variable and one for the SchurComplement system. The smoother for the SchurComplement system needs a SchurComplementFactory as input for variable \"A\". make sure that you use the same proper damping factors for omega both in the SchurComplementFactory and in the SIMPLE smoother!");
+    // TEUCHOS_TEST_FOR_EXCEPTION(FactManager_.size() != 3, Exceptions::RuntimeError,"MueLu::ModBlockedGaussSeidelSmoother::DeclareInput: You have to declare two FactoryManagers with a \"Smoother\" object: One for predicting the primary variable and one for the SchurComplement system. The smoother for the SchurComplement system needs a SchurComplementFactory as input for variable \"A\". make sure that you use the same proper damping factors for omega both in the SchurComplementFactory and in the SIMPLE smoother!");
     
     //this->Input(currentLevel, "A");
     // TODO: check me: why is this->Input not freeing properly A in release mode?
@@ -155,8 +155,9 @@ namespace MueLu {
     TEUCHOS_TEST_FOR_EXCEPTION(bA==Teuchos::null, Exceptions::BadCast, "MueLu::BlockedPFactory::Build: input matrix A is not of type BlockedCrsMatrix! error.");
 
     // plausibility check
-    TEUCHOS_TEST_FOR_EXCEPTION(bA->Rows() != FactManager_.size(), Exceptions::RuntimeError, "MueLu::ModBlockedGaussSeidelSmoother::Setup: number of block rows of A is " << bA->Rows() << " and does not match number of SubFactoryManagers " << FactManager_.size() << ". error.");
-    TEUCHOS_TEST_FOR_EXCEPTION(bA->Cols() != FactManager_.size(), Exceptions::RuntimeError, "MueLu::ModBlockedGaussSeidelSmoother::Setup: number of block cols of A is " << bA->Cols() << " and does not match number of SubFactoryManagers " << FactManager_.size() << ". error.");
+    int blockSize_ = FactManager_.size();
+    TEUCHOS_TEST_FOR_EXCEPTION(bA->Rows() != blockSize_, Exceptions::RuntimeError, "MueLu::ModBlockedGaussSeidelSmoother::Setup: number of block rows of A is " << bA->Rows() << " and does not match number of SubFactoryManagers " << blockSize_ << ". error.");
+    TEUCHOS_TEST_FOR_EXCEPTION(bA->Cols() != blockSize_, Exceptions::RuntimeError, "MueLu::ModBlockedGaussSeidelSmoother::Setup: number of block cols of A is " << bA->Cols() << " and does not match number of SubFactoryManagers " << blockSize_ << ". error.");
 
     // store map extractors
     rangeMapExtractor_  = bA->getRangeMapExtractor();
@@ -175,10 +176,6 @@ namespace MueLu {
       RCP<Matrix> Aii = currentLevel.Get< RCP<Matrix> >("A",(*it)->GetFactory("A").get());
       bIsBlockedOperator_.push_back(Teuchos::rcp_dynamic_cast<BlockedCrsMatrix>(Aii)!=Teuchos::null);
     }
-
-    RCP<Vector> diagA11Vector = VectorFactory::Build(bA->getMatrix(0, 0)->getRowMap());
-    RCP<Vector> diagA22Vector = VectorFactory::Build(bA->getMatrix(1, 1)->getRowMap());
-    RCP<Vector> diagA33Vector = VectorFactory::Build(bA->getMatrix(2, 2)->getRowMap());
 
     const ParameterList & pL = Factory::GetParameterList();
     bool useSIMPLE = pL.get<bool>("UseSIMPLE");
