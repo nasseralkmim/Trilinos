@@ -177,10 +177,13 @@ namespace MueLu {
       bIsBlockedOperator_.push_back(Teuchos::rcp_dynamic_cast<BlockedCrsMatrix>(Aii)!=Teuchos::null);
     }
 
+    // Resize according to the number of blocks
+    diagAInvVector_.resize(blockSize_);
+    
     const ParameterList & pL = Factory::GetParameterList();
     bool useSIMPLE = pL.get<bool>("UseSIMPLE");
     if (useSIMPLE) {
-      *out << "Using modBGS with SIMPLE-like algorithm" << std::endl;
+      *out << "Using modBGS with SIMPLE-like algorithm for: " << blockSize_ << " blocks"  << std::endl;
       for (int i = 0; i < blockSize_; i++) {
         Teuchos::RCP<Vector> AiiDiag = VectorFactory::Build(bA->getMatrix(i, i)->getRowMap());
         bA->getMatrix(i, i)->getLocalDiagCopy(*AiiDiag);
