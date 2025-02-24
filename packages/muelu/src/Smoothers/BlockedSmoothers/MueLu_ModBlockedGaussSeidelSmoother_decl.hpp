@@ -199,9 +199,7 @@ namespace MueLu {
     std::vector<Teuchos::RCP<const SmootherBase>> Inverse_;
 
     //! Inverse diagonal algebraic approximation to approximate displacement block A_{11}
-    Teuchos::RCP<Vector> diagA11inv_;
-    Teuchos::RCP<Vector> diagA22inv_;
-    Teuchos::RCP<Vector> diagA33inv_;
+    std::vector<RCP<Vector>> diagAInvVector_;
     
     //! vector storing whether sub-block is a blocked operator (needed for nested blocked smoothers using Thyra GIDs)
     std::vector<bool> bIsBlockedOperator_;
