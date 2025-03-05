@@ -202,7 +202,15 @@ namespace MueLu {
         diagAInvVector_[i] = Utilities::GetInverse(AiiDiag);
       }
     }
-    
+    bool useSIMPLEUL = pL.get<bool>("UseSIMPLEUL");
+    if (useSIMPLEUL) {
+      *out << "Using modBGS with SIMPLEUL-like algorithm for: " << blockSize_ << " blocks"  << std::endl;
+      for (int i = 0; i < blockSize_; i++) {
+        Teuchos::RCP<Vector> AiiDiag = VectorFactory::Build(bA->getMatrix(i, i)->getRowMap());
+        bA->getMatrix(i, i)->getLocalDiagCopy(*AiiDiag);
+        diagAInvVector_[i] = Utilities::GetInverse(AiiDiag);
+      }
+    }
     // use eigenvalue damping only with "SIMPLE" approaches
     bool useEigenDamping = pL.get<bool>("UseEigenDamping");
     if ((useSIMPLE || useSIMPLEC) && useEigenDamping) {
@@ -351,8 +359,6 @@ namespace MueLu {
       // Decide if use SIMPLE with Upper triangular or usual lower triangualr block Gauss-Seidel with or without simple
       bool useSIMPLEUL = pL.get<bool>("UseSIMPLEUL");
       if (useSIMPLEUL) {
-        RCP<Teuchos::FancyOStream> out = Teuchos::fancyOStream(Teuchos::rcpFromRef(std::cout));
-        *out << "Using modBGS with SIMPLEUL-like algorithm" << std::endl;
         
         RCP<MultiVector> residual = MultiVectorFactory::Build(rcpB->getMap(), rcpB->getNumVectors());
         RCP<BlockedMultiVector> bresidual = Teuchos::rcp_dynamic_cast<BlockedMultiVector>(residual);
