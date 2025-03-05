@@ -132,6 +132,7 @@
 #include "MueLu_SegregatedAFactory.hpp"
 #include "MueLu_SemiCoarsenPFactory.hpp"
 #include "MueLu_SchurComplementFactory.hpp"
+#include "MueLu_CustomSchurAhatFactory.hpp"
 #include "MueLu_SimpleSmoother.hpp"
 #include "MueLu_SmootherFactory.hpp"
 #include "MueLu_StructuredAggregationFactory.hpp"
@@ -370,7 +371,7 @@ namespace MueLu {
       if (factoryName == "BlockedCoordinatesTransferFactory")     return BuildBlockedCoordFactory<BlockedCoordinatesTransferFactory>     (paramList, factoryMapIn, factoryManagersIn);
       if (factoryName == "BlockedDirectSolver")             return BuildBlockedDirectSolver(paramList, factoryMapIn, factoryManagersIn);
       if (factoryName == "BlockedGaussSeidelSmoother")      return BuildBlockedSmoother<BlockedGaussSeidelSmoother>(paramList, factoryMapIn, factoryManagersIn);
-      if (factoryName == "ModBlockedGaussSeidelSmoother")      return BuildBlockedSmoother<ModBlockedGaussSeidelSmoother>(paramList, factoryMapIn, factoryManagersIn);
+      if (factoryName == "ModBlockedGaussSeidelSmoother")   return BuildBlockedSmoother<ModBlockedGaussSeidelSmoother>(paramList, factoryMapIn, factoryManagersIn);
       if (factoryName == "BlockedJacobiSmoother")           return BuildBlockedSmoother<BlockedJacobiSmoother>(paramList, factoryMapIn, factoryManagersIn);
       if (factoryName == "BlockedPFactory")                 return BuildBlockedFactory<BlockedPFactory>(paramList, factoryMapIn, factoryManagersIn);
       if (factoryName == "BraessSarazinSmoother")           return BuildBlockedSmoother<BraessSarazinSmoother>(paramList, factoryMapIn, factoryManagersIn);

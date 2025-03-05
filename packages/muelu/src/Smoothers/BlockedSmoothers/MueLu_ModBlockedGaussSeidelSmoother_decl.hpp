@@ -64,159 +64,97 @@
 #include "MueLu_FactoryManagerBase_fwd.hpp"
 #include "MueLu_SmootherBase_fwd.hpp"
 #include "MueLu_Utilities_fwd.hpp"
+#include "MueLu_CustomSchurAhatFactory_fwd.hpp"
 
 namespace MueLu {
 
-  /*!
-    @class BlockedGaussSeidelSmoother
-    @brief block Gauss-Seidel method for blocked matrices
-
-    Implementation of a block Gauss-Seidel methods for blocked matrices
-    @param LocalOrdinal sweeps = 1: number of BGS sweeps
-    @param Scalar omega = 1.0: damping parameter
-    @param RCP<FactoryBase> AFact = Teuchos::null: factory for blocked "A" operator
-
-    Use the AddFactoryManager routine to declare the subsmoothers/subsolvers for the block Gauss-Seidel method for
-    the block rows. The corresponding factory manager has to provide a variable "A" (pointing to the subblock of the blocked A operator)
-    and a smoother object (variable: "PreSmoother").
-
-    Example
-    \code
-
-    // prototypes for direct solvers for blocks 1 and 2
-    RCP<SmootherPrototype> smoProto11 = rcp(new DirectSolver("", Teuchos::ParameterList(), A11Fact));
-    RCP<SmootherPrototype> smoProto22 = rcp(new DirectSolver("", Teuchos::ParameterList(), A22Fact));
-    RCP<SmootherFactory> Smoo11Fact = rcp(new SmootherFactory(smoProto11));
-    RCP<SmootherFactory> Smoo22Fact = rcp(new SmootherFactory(smoProto22));
-
-    // define factory manager objects for sublocks
-    RCP<FactoryManager> M11 = rcp(new FactoryManager());
-    M11->SetFactory("A", A11Fact);
-    M11->SetFactory("Smoother", Smoo11Fact);
-
-    RCP<FactoryManager> M22 = rcp(new FactoryManager());
-    M22->SetFactory("A", A22Fact);
-    M22->SetFactory("Smoother", Smoo22Fact);
-
-    // create blocked Gauss-Seidel smoother for 2x2 blocked matrix
-    RCP<BlockedGaussSeidelSmoother> smootherPrototype = rcp(new BlockedGaussSeidelSmoother(2,1.0));
-    smootherPrototype->AddFactoryManager(M11);
-    smootherPrototype->AddFactoryManager(M22);
-    RCP<SmootherFactory> smootherFact = rcp( new SmootherFactory(smootherPrototype) );
-
-    // use smootherFact in main-factory manager
-    \endcode
-  */
-
-  template <class Scalar = SmootherPrototype<>::scalar_type,
-            class LocalOrdinal = typename SmootherPrototype<Scalar>::local_ordinal_type,
-            class GlobalOrdinal = typename SmootherPrototype<Scalar, LocalOrdinal>::global_ordinal_type,
-            class Node = typename SmootherPrototype<Scalar, LocalOrdinal, GlobalOrdinal>::node_type>
-  class ModBlockedGaussSeidelSmoother :
-    public SmootherPrototype<Scalar,LocalOrdinal,GlobalOrdinal,Node>
-  {
-    typedef Xpetra::MapExtractor<Scalar, LocalOrdinal, GlobalOrdinal, Node> MapExtractorClass;
-
+  template <class Scalar,class LocalOrdinal, class GlobalOrdinal, class Node>
+  class ModBlockedGaussSeidelSmoother : public SmootherPrototype<Scalar,LocalOrdinal,GlobalOrdinal,Node> {
 #undef MUELU_MODBLOCKEDGAUSSSEIDELSMOOTHER_SHORT
 #include "MueLu_UseShortNames.hpp"
+public:
 
-  public:
-
-    //! @name Constructors / destructors
+    //! @name Constructor/Destructor
     //@{
 
-    /*! @brief Constructor
-    */
+    /*! \brief Constructor */
     ModBlockedGaussSeidelSmoother();
 
     //! Destructor
     virtual ~ModBlockedGaussSeidelSmoother();
     //@}
 
-    //! Input
-    //@{
-    RCP<const ParameterList> GetValidParameterList() const;
 
+    //! @name Overridden from SmootherPrototype
+    //@{
+
+    //! Return the list of valid (and required) parameters accepted by this smoother.
+    RCP<const Teuchos::ParameterList> GetValidParameterList() const;
+
+    //! Declare the data required to build the smoother
     void DeclareInput(Level &currentLevel) const;
 
-    //! Add a factory manager
-    //void AddFactoryManager(RCP<const FactoryManagerBase> FactManager);
-
-    //! Add a factory manager at a specific position
-    void AddFactoryManager(RCP<const FactoryManagerBase> FactManager, int pos);
-
-
-    //@}
-
-    //! @name Setup and Apply methods.
-    //@{
-
-    /*! @brief Setup routine
-     * In the Setup method the Inverse_ vector is filled with the corresponding
-     * SmootherBase objects. Without the Inverse_ vector being filled we cannot call
-     * BlockedGaussSeidelSmoother::Apply.
-    */
+    //! Setup the smoother
     void Setup(Level &currentLevel);
 
-    /*! @brief Apply the direct solver.
-    Solves the linear system <tt>AX=B</tt> using the constructed solver.
-    @param X initial guess
-    @param B right-hand side
-    @param InitialGuessIsZero This option has no effect.
-    */
+    //! Apply the smoother to a given problem.
     void Apply(MultiVector& X, const MultiVector& B, bool InitialGuessIsZero = false) const;
-    //@}
 
+    // //! Return a smoother copy
     RCP<SmootherPrototype> Copy() const;
 
-    //! @name Overridden from Teuchos::Describable
-    //@{
-
-    //! Return a simple one-line description of this object.
+    //! Returns a string describing the object
     std::string description() const;
 
-    /*! \brief Print the object with some verbosity level \c verbLevel to an FancyOStream object \c out
-     *
-     * - use MueLu::Describable::describe;
-     * - overloading, not hiding
-     */
+    //! Print information about this object to out
     void print(Teuchos::FancyOStream &out, const VerbLevel verbLevel = Default) const;
 
-    //! Get a rough estimate of cost per iteration
+    //! Return estimate of smoother complexity per node
     size_t getNodeSmootherComplexity() const;
+    //@}
 
+
+    //! @name Specific methods for Blocked Gauss-Seidel smoother
+    //@{
+
+    /*! \brief Set FactoryManager for Ahat smoother */
+    void SetAhatFactoryManager(RCP<const FactoryManagerBase> FactManager);
+    
+    /*! \brief Set FactoryManager for Dhat smoother */
+    void SetDhatFactoryManager(RCP<const FactoryManagerBase> FactManager);
+
+    /*! \brief Add FactoryManager for subblocks of blocked operator A */
+    void AddFactoryManager(RCP<const FactoryManagerBase> FactManager, int pos);
     //@}
 
   private:
+    //! @name Private methods
+    //@{
+    //@}
 
-    //! smoother type
+
+    //! @name Private data
+    //@{
     std::string type_;
-
-    //! vector of factory managers
-    std::vector<Teuchos::RCP<const FactoryManagerBase> > FactManager_;
-
-    //! vector of smoother/solver factories
-    std::vector<Teuchos::RCP<const SmootherBase>> Inverse_;
-
-    //! Inverse diagonal algebraic approximation to approximate displacement block A_{11}
-    std::vector<RCP<Vector>> diagAInvVector_;
-    
-    //! vector storing whether sub-block is a blocked operator (needed for nested blocked smoothers using Thyra GIDs)
-    std::vector<bool> bIsBlockedOperator_;
-
-    //! A Factory
-    RCP<FactoryBase> AFact_;
-
-    //! internal blocked operator "A" generated by AFact_
     RCP<Matrix> A_;
 
-    //! range  map extractor (from A_ generated by AFact)
-    RCP<const MapExtractorClass> rangeMapExtractor_;
+    //! @note Inverse_[i] is the inverse of the (i,i) block of A
+    std::vector< RCP<const SmootherBase> > Inverse_;
+    std::vector< bool > bIsBlockedOperator_;
+    std::vector< RCP<Vector> > diagAInvVector_;
 
-    //! domain map extractor (from A_ generated by AFact)
-    RCP<const MapExtractorClass> domainMapExtractor_;
+    //! @note FactManager_[i] is the FactoryManager for the i-th block row of blocked operator A
+    std::vector< Teuchos::RCP<const FactoryManagerBase> > FactManager_;
 
-  }; // class Amesos2Smoother
+    RCP<const SmootherBase> AhatSmoother_;
+    RCP<const FactoryManagerBase> AhatFactoryManager_;
+    RCP<const SmootherBase> DhatSmoother_;
+    RCP<const FactoryManagerBase> DhatFactoryManager_;
+
+    RCP<const MapExtractor> rangeMapExtractor_;
+    RCP<const MapExtractor> domainMapExtractor_;
+    //@}
+  };
 
 } // namespace MueLu
 

@@ -47,14 +47,12 @@
 #ifndef MUELU_MODBLOCKEDGAUSSSEIDELSMOOTHER_DEF_HPP_
 #define MUELU_MODBLOCKEDGAUSSSEIDELSMOOTHER_DEF_HPP_
 
-#include "MueLu_CoupledRBMFactory_decl.hpp"
-#include "Teuchos_ArrayViewDecl.hpp"
-#include "Teuchos_ScalarTraits.hpp"
-
 #include "MueLu_ConfigDefs.hpp"
 
 #include <Xpetra_BlockReorderManager.hpp>
+#include <Xpetra_MatrixFactory.hpp>
 #include <Xpetra_Matrix.hpp>
+#include <Xpetra_MatrixMatrix.hpp>
 #include <Xpetra_BlockedCrsMatrix.hpp>
 #include <Xpetra_ReorderedBlockedCrsMatrix.hpp>
 #include <Xpetra_ReorderedBlockedMultiVector.hpp>
@@ -64,11 +62,16 @@
 #include <sstream>
 
 #include "MueLu_ModBlockedGaussSeidelSmoother_decl.hpp"
+
 #include "MueLu_Level.hpp"
 #include "MueLu_Utilities.hpp"
 #include "MueLu_Monitor.hpp"
 #include "MueLu_HierarchyUtils.hpp"
 #include "MueLu_SmootherBase.hpp"
+#include "MueLu_FactoryManager.hpp"
+
+#include "MueLu_CustomSchurAhatFactory.hpp"
+#include "MueLu_CustomSchurDhatFactory.hpp"
 
 namespace MueLu {
 
@@ -94,8 +97,21 @@ namespace MueLu {
     validParamList->set<bool>("UseSIMPLEC", false, "Use SIMPLEC to correct displacement field (default = false)");
     validParamList->set<bool>("UpperTriangular", false, "Use upper triangular instead of lower (default = false)");
     validParamList->set<bool>("UseDiagInverse", false, "Use diagonal inverse in the SIMPLE (default = false)");
+    validParamList->set<bool>("UseSIMPLEUL", false, "Use SIMPLE to correct damage field (default = false)");
+    validParamList->set<bool>("UseSIMPLEUL-v2", false, "Use SIMPLE to correct damage field (default = false)");
+    validParamList->set<bool>("UseSIMPLEUL-v3", false, "Use SIMPLE to correct damage field (default = false)");
 
     return validParamList;
+  }
+
+  template <class Scalar,class LocalOrdinal, class GlobalOrdinal, class Node>
+  void ModBlockedGaussSeidelSmoother<Scalar, LocalOrdinal, GlobalOrdinal, Node>::SetAhatFactoryManager(RCP<const FactoryManagerBase> FactManager) {
+    AhatFactoryManager_ = FactManager;
+  }
+
+  template <class Scalar,class LocalOrdinal, class GlobalOrdinal, class Node>
+  void ModBlockedGaussSeidelSmoother<Scalar, LocalOrdinal, GlobalOrdinal, Node>::SetDhatFactoryManager(RCP<const FactoryManagerBase> FactManager) {
+    DhatFactoryManager_ = FactManager;
   }
 
   template <class Scalar,class LocalOrdinal, class GlobalOrdinal, class Node>
@@ -145,7 +161,7 @@ namespace MueLu {
   void ModBlockedGaussSeidelSmoother<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Setup(Level &currentLevel) {
 
     RCP<Teuchos::FancyOStream> out = Teuchos::fancyOStream(Teuchos::rcpFromRef(std::cout));
-
+    out->setOutputToRootOnly(0);
     FactoryMonitor m(*this, "Setup blocked Gauss-Seidel Smoother", currentLevel);
     if (SmootherPrototype::IsSetup() == true) this->GetOStream(Warnings0) << "MueLu::ModBlockedGaussSeidelSmoother::Setup(): Setup() has already been called";
 
@@ -199,7 +215,129 @@ namespace MueLu {
         diagAInvVector_[i] = Utilities::GetInverse(AiiDiag);
       }
     }
-    
+    bool useSIMPLEUL = pL.get<bool>("UseSIMPLEUL");
+    if (useSIMPLEUL) {
+      *out << "Using modBGS with SIMPLEUL-like algorithm for: " << blockSize_ << " blocks"  << std::endl;
+      for (int i = 0; i < blockSize_; i++) {
+        Teuchos::RCP<Vector> AiiDiag = VectorFactory::Build(bA->getMatrix(i, i)->getRowMap());
+        bA->getMatrix(i, i)->getLocalDiagCopy(*AiiDiag);
+        diagAInvVector_[i] = Utilities::GetInverse(AiiDiag);
+      }
+    }
+    bool useSIMPLEUL_v2 = pL.get<bool>("UseSIMPLEUL-v2");
+    if (useSIMPLEUL_v2) {
+      
+      *out << "Using modBGS with SIMPLEUL-V2-like algorithm for: " << blockSize_ << " blocks"  << std::endl;
+      
+      for (int i = 0; i < blockSize_; i++) {
+        Teuchos::RCP<Vector> AiiDiag = VectorFactory::Build(bA->getMatrix(i, i)->getRowMap());
+        bA->getMatrix(i, i)->getLocalDiagCopy(*AiiDiag);
+        diagAInvVector_[i] = Utilities::GetInverse(AiiDiag);
+      }
+
+      // Create and set up AhatFactoryManager when SIMPLEUL-v2 is enabled
+      RCP<FactoryManager<Scalar,LocalOrdinal,GlobalOrdinal,Node> > AhatFM = 
+          rcp(new FactoryManager<Scalar,LocalOrdinal,GlobalOrdinal,Node>());
+      
+      // Create and configure Ahat factory that computes Ahat = A11 - C1 * (1/diag(H)) * C2
+      RCP<CustomSchurAhatFactory<Scalar,LocalOrdinal,GlobalOrdinal,Node> > AhatFactory = 
+          rcp(new CustomSchurAhatFactory<Scalar,LocalOrdinal,GlobalOrdinal,Node>());
+      
+      // Set the input factory for matrix A (blocked matrix that will be used to build Ahat)
+      AhatFactory->SetFactory("A", this->GetFactory("A"));
+      
+      // Create smoother factory for Ahat (approximates Ahat inverse)
+      // Using same smoother type as the first block
+      RCP<const FactoryManagerBase> firstBlockFM = FactManager_.at(0);
+      RCP<const FactoryBase> AhatSmootherFactory = firstBlockFM->GetFactory("Smoother");
+      
+      // Configure factory manager
+      AhatFM->SetFactory("A", AhatFactory);
+      AhatFM->SetFactory("Smoother", AhatSmootherFactory);
+      
+      // Set the factory manager
+      SetAhatFactoryManager(AhatFM);
+
+      // Set up Ahat smoother that approximated Ahat^{-1}
+      // Get call will triger the Setup of the smoother (e.g. MueLu_IfpackSmoother) and
+      // this will trigger the Build of AhatFactory
+      SetFactoryManager currentSFM(rcpFromRef(currentLevel), AhatFactoryManager_);
+      AhatSmoother_ = currentLevel.Get< RCP<SmootherBase> >("PreSmoother",
+                                                           AhatFactoryManager_->GetFactory("Smoother").get());
+    }
+    bool useSIMPLEUL_v3 = pL.get<bool>("UseSIMPLEUL-v3");
+    if (useSIMPLEUL_v3) {
+      
+      *out << "Using modBGS with SIMPLEUL-V3-like algorithm for: " << blockSize_ << " blocks"  << std::endl;
+      
+      for (int i = 0; i < blockSize_; i++) {
+        Teuchos::RCP<Vector> AiiDiag = VectorFactory::Build(bA->getMatrix(i, i)->getRowMap());
+        bA->getMatrix(i, i)->getLocalDiagCopy(*AiiDiag);
+        diagAInvVector_[i] = Utilities::GetInverse(AiiDiag);
+      }
+
+      // Create and set up AhatFactoryManager when SIMPLEUL-v2 is enabled
+      RCP<FactoryManager<Scalar,LocalOrdinal,GlobalOrdinal,Node> > AhatFM = 
+          rcp(new FactoryManager<Scalar,LocalOrdinal,GlobalOrdinal,Node>());
+      
+      // Create and configure Ahat factory that computes Ahat = A11 - C1 * (1/diag(H)) * C2
+      RCP<CustomSchurAhatFactory<Scalar,LocalOrdinal,GlobalOrdinal,Node> > AhatFactory = 
+          rcp(new CustomSchurAhatFactory<Scalar,LocalOrdinal,GlobalOrdinal,Node>());
+      
+      // Set the input factory for matrix A (blocked matrix that will be used to build Ahat)
+      AhatFactory->SetFactory("A", this->GetFactory("A"));
+      
+      // Create smoother factory for Ahat (approximates Ahat inverse)
+      // Using same smoother type as the first block
+      RCP<const FactoryManagerBase> firstBlockFM = FactManager_.at(0);
+      RCP<const FactoryBase> AhatSmootherFactory = firstBlockFM->GetFactory("Smoother");
+      
+      // Configure factory manager
+      AhatFM->SetFactory("A", AhatFactory);
+      AhatFM->SetFactory("Smoother", AhatSmootherFactory);
+      
+      // Set the factory manager
+      SetAhatFactoryManager(AhatFM);
+
+      // Set up Ahat smoother that approximated Ahat^{-1}
+      // Get call will triger the Setup of the smoother (e.g. MueLu_IfpackSmoother) and
+      // this will trigger the Build of AhatFactory
+      SetFactoryManager currentSFM(rcpFromRef(currentLevel), AhatFactoryManager_);
+      AhatSmoother_ = currentLevel.Get< RCP<SmootherBase> >("PreSmoother",
+                                                           AhatFactoryManager_->GetFactory("Smoother").get());
+      
+      // Create and set up AhatFactoryManager when SIMPLEUL-v2 is enabled
+      RCP<FactoryManager<Scalar,LocalOrdinal,GlobalOrdinal,Node> > DhatFM = 
+          rcp(new FactoryManager<Scalar,LocalOrdinal,GlobalOrdinal,Node>());
+      
+      // Create and configure Dhat factory that computes Dhat = A11 - C1 * (1/diag(H)) * C2
+      RCP<CustomSchurDhatFactory<Scalar,LocalOrdinal,GlobalOrdinal,Node> > DhatFactory = 
+          rcp(new CustomSchurDhatFactory<Scalar,LocalOrdinal,GlobalOrdinal,Node>());
+      
+      // Set the input factory for matrix A (blocked matrix that will be used to build Dhat)
+      DhatFactory->SetFactory("A", this->GetFactory("A"));
+      
+      // Create smoother factory for Dhat (approximates Dhat inverse)
+      // Using same smoother type as the first block
+      RCP<const FactoryManagerBase> secondBlockFM = FactManager_.at(1);
+      RCP<const FactoryBase> DhatSmootherFactory = secondBlockFM->GetFactory("Smoother");
+      
+      // Configure factory manager
+      DhatFM->SetFactory("A", DhatFactory);
+      DhatFM->SetFactory("Smoother", DhatSmootherFactory);
+      
+      // Set the factory manager
+      SetDhatFactoryManager(DhatFM);
+
+      // Set up Dhat smoother that approximated Dhat^{-1}
+      // Get call will triger the Setup of the smoother (e.g. MueLu_IfpackSmoother) and
+      // this will trigger the Build of DhatFactory
+      SetFactoryManager currentSFM2(rcpFromRef(currentLevel), DhatFactoryManager_);
+      DhatSmoother_ = currentLevel.Get< RCP<SmootherBase> >("PreSmoother",
+                                                           DhatFactoryManager_->GetFactory("Smoother").get());
+
+    }
+
     // use eigenvalue damping only with "SIMPLE" approaches
     bool useEigenDamping = pL.get<bool>("UseEigenDamping");
     if ((useSIMPLE || useSIMPLEC) && useEigenDamping) {
@@ -318,253 +456,623 @@ namespace MueLu {
 
       // check type of X vector
       if(bX.is_null() == false && bX->getBlockedMap()->getNumMaps() != bA->getDomainMapExtractor()->NumMaps()) {
-        RCP<ReorderedBlockedMultiVector> rbX = Teuchos::rcp_dynamic_cast<ReorderedBlockedMultiVector>(bX);
-        if(rbX.is_null() == true) {
-          // X is a blocked multi vector but not reordered
-          // However, A is a reordered blocked operator
-          // We have to make sure, that A and X use compatible maps
-          Teuchos::RCP<MultiVector> test =
-              buildReorderedBlockedMultiVector(brm, bX);
-          rcpX.swap(test);
-        }
+      RCP<ReorderedBlockedMultiVector> rbX = Teuchos::rcp_dynamic_cast<ReorderedBlockedMultiVector>(bX);
+      if(rbX.is_null() == true) {
+      // X is a blocked multi vector but not reordered
+      // However, A is a reordered blocked operator
+      // We have to make sure, that A and X use compatible maps
+      Teuchos::RCP<MultiVector> test =
+      buildReorderedBlockedMultiVector(brm, bX);
+      rcpX.swap(test);
+      }
       }
       if(bB.is_null() == false && bB->getBlockedMap()->getNumMaps() != bA->getRangeMapExtractor()->NumMaps()) {
-        RCP<const ReorderedBlockedMultiVector> rbB = Teuchos::rcp_dynamic_cast<const ReorderedBlockedMultiVector>(bB);
-        if(rbB.is_null() == true) {
-          // B is a blocked multi vector but not reordered
-          // However, A is a reordered blocked operator
-          // We have to make sure, that A and X use compatible maps
-          Teuchos::RCP<const MultiVector> test =
-              buildReorderedBlockedMultiVector(brm, bB);
-          rcpB.swap(test);
-        }
+      RCP<const ReorderedBlockedMultiVector> rbB = Teuchos::rcp_dynamic_cast<const ReorderedBlockedMultiVector>(bB);
+      if(rbB.is_null() == true) {
+      // B is a blocked multi vector but not reordered
+      // However, A is a reordered blocked operator
+      // We have to make sure, that A and X use compatible maps
+      Teuchos::RCP<const MultiVector> test =
+      buildReorderedBlockedMultiVector(brm, bB);
+      rcpB.swap(test);
       }
-    }*/
+      }
+      }*/
 
     // Throughout the rest of the algorithm rcpX and rcpB are used for solution vector and RHS
 
     if (FactManager_.size() == 3) {
-      RCP<MultiVector> residual = MultiVectorFactory::Build(rcpB->getMap(), rcpB->getNumVectors());
-      RCP<BlockedMultiVector> bresidual = Teuchos::rcp_dynamic_cast<BlockedMultiVector>(residual);
-      RCP<MultiVector> r1 = bresidual->getMultiVector(0,bRangeThyraMode);
-      RCP<MultiVector> r2 = bresidual->getMultiVector(1,bRangeThyraMode);
-      RCP<MultiVector> r3 = bresidual->getMultiVector(2,bRangeThyraMode);
 
-      // helper vector 1
-      RCP<MultiVector> xtilde = MultiVectorFactory::Build(rcpX->getMap(), rcpX->getNumVectors());
-      RCP<BlockedMultiVector> bxtilde = Teuchos::rcp_dynamic_cast<BlockedMultiVector>(xtilde);
-      RCP<MultiVector> xtilde1 = bxtilde->getMultiVector(0, bDomainThyraMode);
-      RCP<MultiVector> xtilde2 = bxtilde->getMultiVector(1, bDomainThyraMode);
-      RCP<MultiVector> xtilde3 = bxtilde->getMultiVector(2, bDomainThyraMode);
-
-      // helper vector 2
-      RCP<MultiVector> xhat = MultiVectorFactory::Build(rcpX->getMap(), rcpX->getNumVectors());
-      RCP<BlockedMultiVector> bxhat = Teuchos::rcp_dynamic_cast<BlockedMultiVector>(xhat);
-      RCP<MultiVector> xhat1 = bxhat->getMultiVector(0, bDomainThyraMode);
-      RCP<MultiVector> xhat2 = bxhat->getMultiVector(1, bDomainThyraMode);
-      RCP<MultiVector> xhat3 = bxhat->getMultiVector(2, bDomainThyraMode);
-
-      RCP<MultiVector> tempres = MultiVectorFactory::Build(rcpB->getMap(), rcpB->getNumVectors());
-
-      // Clear solution from previos V cycles in case it is still stored
-      if( InitialGuessIsZero==true )
-        rcpX->putScalar(Teuchos::ScalarTraits<Scalar>::zero());
-    
-      // incrementally improve solution vector X
-      for (LocalOrdinal run = 0; run < nSweeps; ++run) {
-        // 1. calculate current residual = B - A rcpX
-        residual->update(one, *rcpB, zero); // residual = B
-        if(InitialGuessIsZero == false || run > 0)
-          A_->apply(*rcpX, *residual, Teuchos::NO_TRANS, -one, one);
-
-        // 2. Solve A_{11} \Delta \tilde{x}_1 = r_1
-        xtilde1->putScalar(zero);
-        xtilde2->putScalar(zero);
-        xtilde3->putScalar(zero);
-        Inverse_.at(0)->Apply(*xtilde1, *r1);
-
-        // 3. Compute the RHS for the second sub-problem using the solution \tilde{x}_1.
-        //     rhs2 = r_2 - B_2 \Delta \tilde{x}_1  with B_2 = A_{21}
-        RCP<MultiVector> schurCompRHS = rangeMapExtractor_->getVector(1, rcpB->getNumVectors(), bRangeThyraMode);
-        bA->getMatrix(1, 0)->apply(*xtilde1, *schurCompRHS);
-        schurCompRHS->update(one, *r2, -one);
-
-        // 4. Solve this second problem considering specific Schur complement approximation by S = A_{22}
-        Inverse_.at(1)->Apply(*xtilde2, *schurCompRHS);
-
-        // 5. Solve the third problem considering it independent from the others
-        Inverse_.at(2)->Apply(*xtilde3, *r3);
-
-        // 6. Store \tilde{x}
-        // \hat{x}: correction after one iteration
-        xhat3->update(one, *xtilde3, zero);
-      
-        bool useSIMPLE = pL.get<bool>("UseSIMPLE");
-        bool useSIMPLEC = pL.get<bool>("UseSIMPLEC");
-        if (useSIMPLE || useSIMPLEC) {
-          // correct analogous to SIMPLE, using \Delta \tilde{x}_2 and \Delta \tilde{x}_3
-          RCP<MultiVector> B1_xtilde2 = domainMapExtractor_->getVector(0, rcpX->getNumVectors(), bDomainThyraMode);
-          RCP<MultiVector> C1_xtilde3 = domainMapExtractor_->getVector(0, rcpX->getNumVectors(), bDomainThyraMode);
-          RCP<MultiVector> F1_xtilde3 = domainMapExtractor_->getVector(1, rcpX->getNumVectors(), bDomainThyraMode);
-          RCP<MultiVector> Dinv_F1_xtilde3 = domainMapExtractor_->getVector(1, rcpX->getNumVectors(), bDomainThyraMode);
-          RCP<MultiVector> B1_Dinv_F1_xtilde3 = domainMapExtractor_->getVector(0, rcpX->getNumVectors(), bDomainThyraMode);
-
-          Scalar AdampingFactor;
-          Scalar DdampingFactor;
-          bool useEigenDamping = pL.get<bool>("UseEigenDamping");
-          if (useEigenDamping) {
-            Scalar AlambdaMax = bA->getMatrix(0, 0)->GetMaxEigenvalueEstimate();
-            Scalar DlambdaMax = bA->getMatrix(1, 1)->GetMaxEigenvalueEstimate();
-            AdampingFactor = omega / AlambdaMax;
-            DdampingFactor = omega / DlambdaMax;
-            RCP<Teuchos::FancyOStream> out = Teuchos::fancyOStream(Teuchos::rcpFromRef(std::cout));
-            /* *out << "AdampingFactor" << AdampingFactor << std::endl; */
-            /* *out << "DdampingFactor" << DdampingFactor << std::endl; */
-          } else {
-            AdampingFactor = omega;
-            DdampingFactor = omega;
-          }
-
-          // first update \Delta \tilde{x}_2 = \Delta \tilde{x}_2 - A22inv F1 \Delta \tilde{x}_3
-          bA->getMatrix(1, 2)->apply(*xhat3, *F1_xtilde3);
-
-          bool useDiagInv = pL.get<bool>("UseDiagInverse");
-          if (useDiagInv) {
-            RCP<MultiVector> xhat2_temp1 = domainMapExtractor_->getVector(1, rcpX->getNumVectors(), bDomainThyraMode);
-            Inverse_.at(1)->Apply(*xhat2_temp1, *F1_xtilde3);
-            xhat2->update(DdampingFactor, *xhat2_temp1, zero);
-          } else {
-            xhat2->elementWiseMultiply(DdampingFactor, *diagAInvVector_[1], *F1_xtilde3, zero);
-            Dinv_F1_xtilde3->elementWiseMultiply(one, *diagAInvVector_[1], *F1_xtilde3, zero);
-          }
-          xhat2->update(one, *xtilde2, -one);
+      // Decide if use SIMPLE with Upper triangular or usual lower triangualr block Gauss-Seidel with or without simple
+      bool useSIMPLEUL = pL.get<bool>("UseSIMPLEUL");
+      bool useSIMPLEUL_v2 = pL.get<bool>("UseSIMPLEUL-v2");
+      bool useSIMPLEUL_v3 = pL.get<bool>("UseSIMPLEUL-v3");
+      if (useSIMPLEUL) {
         
-          // use the updated xhat2 to update \Delta \tilde{x}_1
-          bA->getMatrix(0, 1)->apply(*xhat2, *B1_xtilde2);
-          bA->getMatrix(0, 2)->apply(*xhat3, *C1_xtilde3);
-          bA->getMatrix(0, 1)->apply(*Dinv_F1_xtilde3, *B1_Dinv_F1_xtilde3);
+        RCP<MultiVector> residual = MultiVectorFactory::Build(rcpB->getMap(), rcpB->getNumVectors());
+        RCP<BlockedMultiVector> bresidual = Teuchos::rcp_dynamic_cast<BlockedMultiVector>(residual);
+        RCP<MultiVector> r1 = bresidual->getMultiVector(0,bRangeThyraMode);
+        RCP<MultiVector> r2 = bresidual->getMultiVector(1,bRangeThyraMode);
+        RCP<MultiVector> r3 = bresidual->getMultiVector(2,bRangeThyraMode);
 
-          // since omega was already applied to \tilde{x}_2, we use 1 here
-          if (useDiagInv) {
-            RCP<MultiVector> xhat1_temp1 = domainMapExtractor_->getVector(0, rcpX->getNumVectors(), bDomainThyraMode);
-            RCP<MultiVector> xhat1_temp2 = domainMapExtractor_->getVector(0, rcpX->getNumVectors(), bDomainThyraMode);
-            Inverse_.at(0)->Apply(*xhat1_temp1, *B1_xtilde2);
-            Inverse_.at(0)->Apply(*xhat1_temp2, *C1_xtilde3);
-            xhat1->update(AdampingFactor, *xhat1_temp1, zero);
-            xhat1->update(AdampingFactor, *xhat1_temp2, one);
-          } else {
-            xhat1->elementWiseMultiply(AdampingFactor, *diagAInvVector_[0], *B1_xtilde2, zero);
-            xhat1->elementWiseMultiply(AdampingFactor, *diagAInvVector_[0], *C1_xtilde3, one);
-            xhat1->elementWiseMultiply(AdampingFactor, *diagAInvVector_[0], *B1_Dinv_F1_xtilde3, -one);
-          }
-          xhat1->update(one, *xtilde1, -one); // \Delta \tilde{x}_1 - Ainv B_1 \Delta \tilde{x}_2
+        // helper vector 1 (preliminary, intermediary calculation)
+        RCP<MultiVector> x_p = MultiVectorFactory::Build(rcpX->getMap(), rcpX->getNumVectors());
+        RCP<BlockedMultiVector> bx_p = Teuchos::rcp_dynamic_cast<BlockedMultiVector>(x_p);
+        RCP<MultiVector> x_p1 = bx_p->getMultiVector(0, bDomainThyraMode);
+        RCP<MultiVector> x_p2 = bx_p->getMultiVector(1, bDomainThyraMode);
+        RCP<MultiVector> x_p3 = bx_p->getMultiVector(2, bDomainThyraMode);
 
-        } else {
-          xhat2->update(one, *xtilde2, zero);
-          xhat1->update(one, *xtilde1, zero);
+        // helper vector 2
+        RCP<MultiVector> xhat = MultiVectorFactory::Build(rcpX->getMap(), rcpX->getNumVectors());
+        RCP<BlockedMultiVector> bxhat = Teuchos::rcp_dynamic_cast<BlockedMultiVector>(xhat);
+        RCP<MultiVector> xhat1 = bxhat->getMultiVector(0, bDomainThyraMode);
+        RCP<MultiVector> xhat2 = bxhat->getMultiVector(1, bDomainThyraMode);
+        RCP<MultiVector> xhat3 = bxhat->getMultiVector(2, bDomainThyraMode);
+
+        RCP<MultiVector> tempres = MultiVectorFactory::Build(rcpB->getMap(), rcpB->getNumVectors());
+
+        // Clear solution from previos V cycles in case it is still stored
+        if( InitialGuessIsZero==true )
+          rcpX->putScalar(Teuchos::ScalarTraits<Scalar>::zero());
+
+        // incrementally improve solution vector X
+        for (LocalOrdinal run = 0; run < nSweeps; ++run) {
+          // calculate current residual = B - A rcpX
+          residual->update(one, *rcpB, zero); // residual = B
+          if(InitialGuessIsZero == false || run > 0)
+            A_->apply(*rcpX, *residual, Teuchos::NO_TRANS, -one, one);
+
+          // start from 0 
+          x_p1->putScalar(zero);
+          x_p2->putScalar(zero);
+          x_p3->putScalar(zero);
+
+          // FIRST step, apply the preconditioner to the damage field
+          Inverse_.at(2)->Apply(*x_p3, *r3);
+
+          // Compute the RHS for displacement and microrotation fields
+          RCP<MultiVector> displ_RHS = rangeMapExtractor_->getVector(0, rcpB->getNumVectors(), bRangeThyraMode);
+          RCP<MultiVector> microrotation_RHS =
+            rangeMapExtractor_->getVector(1, rcpB->getNumVectors(), bRangeThyraMode);
+          
+          RCP<Matrix> C1 = bA->getMatrix(0, 2);
+          C1->apply(*x_p3, *displ_RHS);
+          displ_RHS->update(one, *r1, -one);
+          
+          RCP<Matrix> F1 = bA->getMatrix(1, 2);
+          F1->apply(*x_p3, *microrotation_RHS);
+          microrotation_RHS->update(one, *r2, -one);
+
+          // Solve the intermediate problem for the displacement field and microrotation
+          // TODO: this is a temporary solution, we need to implement a smoother for the Schur complement.
+          // NOTE: using the smoother for A^{-1} instead of a smoother for the Schur
+          // complement (A - C1 H^{-1} C2)^{-1}.
+          Inverse_.at(0)->Apply(*x_p1, *displ_RHS);
+
+          RCP<Matrix> B2 = bA->getMatrix(1, 0);
+          RCP<Matrix> C2 = bA->getMatrix(1, 2);
+
+          // Build Schur complement for block B2: Schur_B2 = B2 - F1 diagAinvVector[2] C2
+          RCP<Matrix> Hinv_C2 = MatrixFactory::BuildCopy(C2, false);
+          Hinv_C2->leftScale(*diagAInvVector_[2]);
+          RCP<Matrix> F1_Hinv_C2 = MatrixFactory::BuildCopy(B2, false);
+          Xpetra::MatrixMatrix<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Multiply(*F1, false, *Hinv_C2, false, *F1_Hinv_C2, true, true);
+          RCP<Matrix> Schur_B2 = MatrixFactory::BuildCopy(B2, false);
+          Xpetra::MatrixMatrix<Scalar, LocalOrdinal, GlobalOrdinal, Node>::TwoMatrixAdd(*F1_Hinv_C2, false, -one, *B2, false, one, Schur_B2, this->GetOStream(Statistics2));
+
+          // Build a temporary RHS: temp_RHS = microrotation_RHS - Schur_B2 x_p1
+          RCP<MultiVector> temp_RHS = rangeMapExtractor_->getVector(1, rcpB->getNumVectors(), bRangeThyraMode);
+          Schur_B2->apply(*x_p1, *temp_RHS);
+          temp_RHS->update(one, *microrotation_RHS, -one);
+          
+          // TODO: this is a temporary solution, we need to implement a smoother for the Schur complement.
+          // NOTE: using the smoother for D^{-1} instead of a smoother for the Schur
+          // complement (D - F1 H^{-1} F2)^{-1}.
+          Inverse_.at(1)->Apply(*x_p2, *temp_RHS);
+
+          // Store solution
+          xhat1->update(one, *x_p1, zero);
+          xhat2->update(one, *x_p2, zero);
+
+          // Compute correction for damage
+          RCP<MultiVector> Hinv_C2_x_p1 = domainMapExtractor_->getVector(2, rcpX->getNumVectors(), bDomainThyraMode);
+          RCP<MultiVector> Hinv_F2_x_p2 = domainMapExtractor_->getVector(2, rcpX->getNumVectors(), bDomainThyraMode);
+          // Compute Hinv_C2_x_p1 = diagAInvVecto_[2] C2 x_p1
+          C2->apply(*x_p1, *Hinv_C2_x_p1);
+          Hinv_C2_x_p1->elementWiseMultiply(1.0, *diagAInvVector_[2], *Hinv_C2_x_p1, 0.0);
+          // Compute Hinv_F2_x_p2 = diagAInvVector_[2] F2 x_p2
+          F1->apply(*x_p2, *Hinv_F2_x_p2);
+          Hinv_F2_x_p2->elementWiseMultiply(1.0, *diagAInvVector_[2], *Hinv_F2_x_p2, 0.0);
+
+          // Compute the correction for the damage field
+          // xhat3 = x_p3 - Hinv_F2_x_p2 - Hinv_C2_x_p1
+          xhat3->update(one, *x_p3, zero);
+          xhat3->update(-one, *Hinv_F2_x_p2, one);
+          xhat3->update(-one, *Hinv_C2_x_p1, one);
+          
+          // 7. Update solution vector
+          rcpX->update(one, *bxhat, one); // x^{k+1} = x^{k} + xhat
         }
+      
+      } else if (useSIMPLEUL_v2) {
+        
+        RCP<MultiVector> residual = MultiVectorFactory::Build(rcpB->getMap(), rcpB->getNumVectors());
+        RCP<BlockedMultiVector> bresidual = Teuchos::rcp_dynamic_cast<BlockedMultiVector>(residual);
+        RCP<MultiVector> r1 = bresidual->getMultiVector(0,bRangeThyraMode);
+        RCP<MultiVector> r2 = bresidual->getMultiVector(1,bRangeThyraMode);
+        RCP<MultiVector> r3 = bresidual->getMultiVector(2,bRangeThyraMode);
 
-        // 7. Update solution vector
-        rcpX->update(one, *bxhat, one); // x^{k+1} = x^{k} + xhat
-      }
+        // helper vector 1 (preliminary, intermediary calculation)
+        RCP<MultiVector> x_p = MultiVectorFactory::Build(rcpX->getMap(), rcpX->getNumVectors());
+        RCP<BlockedMultiVector> bx_p = Teuchos::rcp_dynamic_cast<BlockedMultiVector>(x_p);
+        RCP<MultiVector> x_p1 = bx_p->getMultiVector(0, bDomainThyraMode);
+        RCP<MultiVector> x_p2 = bx_p->getMultiVector(1, bDomainThyraMode);
+        RCP<MultiVector> x_p3 = bx_p->getMultiVector(2, bDomainThyraMode);
+
+        // helper vector 2
+        RCP<MultiVector> xhat = MultiVectorFactory::Build(rcpX->getMap(), rcpX->getNumVectors());
+        RCP<BlockedMultiVector> bxhat = Teuchos::rcp_dynamic_cast<BlockedMultiVector>(xhat);
+        RCP<MultiVector> xhat1 = bxhat->getMultiVector(0, bDomainThyraMode);
+        RCP<MultiVector> xhat2 = bxhat->getMultiVector(1, bDomainThyraMode);
+        RCP<MultiVector> xhat3 = bxhat->getMultiVector(2, bDomainThyraMode);
+
+        RCP<MultiVector> tempres = MultiVectorFactory::Build(rcpB->getMap(), rcpB->getNumVectors());
+
+        // Clear solution from previos V cycles in case it is still stored
+        if( InitialGuessIsZero==true )
+          rcpX->putScalar(Teuchos::ScalarTraits<Scalar>::zero());
+    
+        // incrementally improve solution vector X
+        for (LocalOrdinal run = 0; run < nSweeps; ++run) {
+          // calculate current residual = B - A rcpX
+          residual->update(one, *rcpB, zero); // residual = B
+          if(InitialGuessIsZero == false || run > 0)
+            A_->apply(*rcpX, *residual, Teuchos::NO_TRANS, -one, one);
+
+          // start from 0 
+          x_p1->putScalar(zero);
+          x_p2->putScalar(zero);
+          x_p3->putScalar(zero);
+
+          // FIRST step, apply the preconditioner to the damage field
+          Inverse_.at(2)->Apply(*x_p3, *r3);
+
+          // Compute the RHS for displacement and microrotation fields
+          RCP<MultiVector> displ_RHS = rangeMapExtractor_->getVector(0, rcpB->getNumVectors(), bRangeThyraMode);
+          RCP<MultiVector> microrotation_RHS =
+            rangeMapExtractor_->getVector(1, rcpB->getNumVectors(), bRangeThyraMode);
+          
+          RCP<Matrix> C1 = bA->getMatrix(0, 2);
+          C1->apply(*x_p3, *displ_RHS);
+          displ_RHS->update(one, *r1, -one);
+          
+          RCP<Matrix> F1 = bA->getMatrix(1, 2);
+          F1->apply(*x_p3, *microrotation_RHS);
+          microrotation_RHS->update(one, *r2, -one);
+
+          // Solve the intermediate problem for the displacement field and microrotation
+          // AhatSmoother approximates AhatInv with Ahat = (A - C1 diagH^{-1} C2)^{-1}.
+          // The smoother is the same as the one used for the first block
+          AhatSmoother_->Apply(*x_p1, *displ_RHS);
+
+          RCP<Matrix> B2 = bA->getMatrix(1, 0);
+          RCP<Matrix> C2 = bA->getMatrix(1, 2);
+          
+          // Build Schur complement for block B2: Schur_B2 = B2 - F1 diagAinvVector[2] C2
+          RCP<Matrix> Hinv_C2 = MatrixFactory::BuildCopy(C2, false);
+          Hinv_C2->leftScale(*diagAInvVector_[2]);
+          RCP<Matrix> F1_Hinv_C2 = MatrixFactory::BuildCopy(B2, false);
+          Xpetra::MatrixMatrix<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Multiply(*F1, false, *Hinv_C2, false, *F1_Hinv_C2, true, true);
+          RCP<Matrix> Schur_B2 = MatrixFactory::BuildCopy(B2, false);
+          Xpetra::MatrixMatrix<Scalar, LocalOrdinal, GlobalOrdinal, Node>::TwoMatrixAdd(*F1_Hinv_C2, false, -one, *B2, false, one, Schur_B2, this->GetOStream(Statistics2));
+
+          // Build a temporary RHS: temp_RHS = microrotation_RHS - Schur_B2 x_p1
+          RCP<MultiVector> temp_RHS = rangeMapExtractor_->getVector(1, rcpB->getNumVectors(), bRangeThyraMode);
+          Schur_B2->apply(*x_p1, *temp_RHS);
+          temp_RHS->update(one, *microrotation_RHS, -one);
+          
+          // TODO: this is a temporary solution, we need to implement a smoother for the Schur complement.
+          // NOTE: using the smoother for D^{-1} instead of a smoother for the Schur
+          // complement (D - F1 H^{-1} F2)^{-1}.
+          Inverse_.at(1)->Apply(*x_p2, *temp_RHS);
+
+          // Store solution
+          xhat1->update(one, *x_p1, zero);
+          xhat2->update(one, *x_p2, zero);
+
+          // Compute correction for damage
+          RCP<MultiVector> Hinv_C2_x_p1 = domainMapExtractor_->getVector(2, rcpX->getNumVectors(), bDomainThyraMode);
+          RCP<MultiVector> Hinv_F2_x_p2 = domainMapExtractor_->getVector(2, rcpX->getNumVectors(), bDomainThyraMode);
+          // Compute Hinv_C2_x_p1 = diagAInvVecto_[2] C2 x_p1
+          C2->apply(*x_p1, *Hinv_C2_x_p1);
+          Hinv_C2_x_p1->elementWiseMultiply(1.0, *diagAInvVector_[2], *Hinv_C2_x_p1, 0.0);
+          // Compute Hinv_F2_x_p2 = diagAInvVector_[2] F2 x_p2
+          F1->apply(*x_p2, *Hinv_F2_x_p2);
+          Hinv_F2_x_p2->elementWiseMultiply(1.0, *diagAInvVector_[2], *Hinv_F2_x_p2, 0.0);
+
+          // Compute the correction for the damage field
+          // xhat3 = x_p3 - Hinv_F2_x_p2 - Hinv_C2_x_p1
+          xhat3->update(one, *x_p3, zero);
+          xhat3->update(-one, *Hinv_F2_x_p2, one);
+          xhat3->update(-one, *Hinv_C2_x_p1, one);
+          
+          // 7. Update solution vector
+          rcpX->update(one, *bxhat, one); // x^{k+1} = x^{k} + xhat
+        }
+      
+      } else if (useSIMPLEUL_v3) {
+        
+        RCP<MultiVector> residual = MultiVectorFactory::Build(rcpB->getMap(), rcpB->getNumVectors());
+        RCP<BlockedMultiVector> bresidual = Teuchos::rcp_dynamic_cast<BlockedMultiVector>(residual);
+        RCP<MultiVector> r1 = bresidual->getMultiVector(0,bRangeThyraMode);
+        RCP<MultiVector> r2 = bresidual->getMultiVector(1,bRangeThyraMode);
+        RCP<MultiVector> r3 = bresidual->getMultiVector(2,bRangeThyraMode);
+
+        // helper vector 1 (preliminary, intermediary calculation)
+        RCP<MultiVector> x_p = MultiVectorFactory::Build(rcpX->getMap(), rcpX->getNumVectors());
+        RCP<BlockedMultiVector> bx_p = Teuchos::rcp_dynamic_cast<BlockedMultiVector>(x_p);
+        RCP<MultiVector> x_p1 = bx_p->getMultiVector(0, bDomainThyraMode);
+        RCP<MultiVector> x_p2 = bx_p->getMultiVector(1, bDomainThyraMode);
+        RCP<MultiVector> x_p3 = bx_p->getMultiVector(2, bDomainThyraMode);
+
+        // helper vector 2
+        RCP<MultiVector> xhat = MultiVectorFactory::Build(rcpX->getMap(), rcpX->getNumVectors());
+        RCP<BlockedMultiVector> bxhat = Teuchos::rcp_dynamic_cast<BlockedMultiVector>(xhat);
+        RCP<MultiVector> xhat1 = bxhat->getMultiVector(0, bDomainThyraMode);
+        RCP<MultiVector> xhat2 = bxhat->getMultiVector(1, bDomainThyraMode);
+        RCP<MultiVector> xhat3 = bxhat->getMultiVector(2, bDomainThyraMode);
+
+        RCP<MultiVector> tempres = MultiVectorFactory::Build(rcpB->getMap(), rcpB->getNumVectors());
+
+        // Clear solution from previos V cycles in case it is still stored
+        if( InitialGuessIsZero==true )
+          rcpX->putScalar(Teuchos::ScalarTraits<Scalar>::zero());
+    
+        // incrementally improve solution vector X
+        for (LocalOrdinal run = 0; run < nSweeps; ++run) {
+          // calculate current residual = B - A rcpX
+          residual->update(one, *rcpB, zero); // residual = B
+          if(InitialGuessIsZero == false || run > 0)
+            A_->apply(*rcpX, *residual, Teuchos::NO_TRANS, -one, one);
+
+          // start from 0 
+          x_p1->putScalar(zero);
+          x_p2->putScalar(zero);
+          x_p3->putScalar(zero);
+
+          // FIRST step, apply the preconditioner to the damage field
+          Inverse_.at(2)->Apply(*x_p3, *r3);
+
+          // Compute the RHS for displacement and microrotation fields
+          RCP<MultiVector> displ_RHS = rangeMapExtractor_->getVector(0, rcpB->getNumVectors(), bRangeThyraMode);
+          RCP<MultiVector> microrotation_RHS =
+            rangeMapExtractor_->getVector(1, rcpB->getNumVectors(), bRangeThyraMode);
+
+          RCP<Matrix> C1 = bA->getMatrix(0, 2);
+          if (C1 != Teuchos::null) {
+            C1->apply(*x_p3, *displ_RHS);
+          } else {
+            displ_RHS->putScalar(zero);
+          }
+          displ_RHS->update(one, *r1, -one);
+          
+          RCP<Matrix> F1 = bA->getMatrix(1, 2);
+          if (F1 != Teuchos::null) {
+          F1->apply(*x_p3, *microrotation_RHS);
+          } else {
+            microrotation_RHS->putScalar(zero);
+          }
+          microrotation_RHS->update(one, *r2, -one);
+          
+          // Solve the intermediate problem for the displacement field and microrotation
+          // AhatSmoother approximates AhatInv with Ahat = (A - C1 diagH^{-1} C2)^{-1}.
+          // The smoother is the same as the one used for the first block
+          AhatSmoother_->Apply(*x_p1, *displ_RHS);
+          
+          RCP<Matrix> B2 = bA->getMatrix(1, 0);
+          RCP<Matrix> C2 = bA->getMatrix(1, 2);
+          
+          // Build Schur complement for block B2: Schur_B2 = B2 - F1 diagAinvVector[2] C2
+          RCP<Matrix> Hinv_C2 = Teuchos::null;
+          RCP<Matrix> F1_Hinv_C2 = Teuchos::null;
+          RCP<Matrix> Schur_B2 = Teuchos::null;
+          if (C2 != Teuchos::null && F1 != Teuchos::null && B2 != Teuchos::null) {
+            Hinv_C2 = MatrixFactory::BuildCopy(C2, false);
+            Hinv_C2->leftScale(*diagAInvVector_[2]);
+            F1_Hinv_C2 = MatrixFactory::BuildCopy(B2, false);
+            Xpetra::MatrixMatrix<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Multiply(*F1, false, *Hinv_C2, false, *F1_Hinv_C2, true, true);
+            Schur_B2 = MatrixFactory::BuildCopy(B2, false);
+            Xpetra::MatrixMatrix<Scalar, LocalOrdinal, GlobalOrdinal, Node>::TwoMatrixAdd(*F1_Hinv_C2, false, -one, *B2, false, one, Schur_B2, this->GetOStream(Statistics2));
+          }
+          
+          // Build a temporary RHS: temp_RHS = microrotation_RHS - Schur_B2 x_p1
+          RCP<MultiVector> temp_RHS = rangeMapExtractor_->getVector(1, rcpB->getNumVectors(), bRangeThyraMode);
+          if (Schur_B2 != Teuchos::null) {
+            Schur_B2->apply(*x_p1, *temp_RHS);
+          } else {
+            temp_RHS->putScalar(zero);
+          }
+          temp_RHS->update(one, *microrotation_RHS, -one);
+          
+          DhatSmoother_->Apply(*x_p2, *temp_RHS);
+
+          // Store solution
+          xhat1->update(one, *x_p1, zero);
+          xhat2->update(one, *x_p2, zero);
+
+          // Compute correction for damage
+          RCP<MultiVector> Hinv_C2_x_p1 = domainMapExtractor_->getVector(2, rcpX->getNumVectors(), bDomainThyraMode);
+          RCP<MultiVector> Hinv_F2_x_p2 = domainMapExtractor_->getVector(2, rcpX->getNumVectors(), bDomainThyraMode);
+          // Compute Hinv_C2_x_p1 = diagAInvVecto_[2] C2 x_p1
+          if (C2 != Teuchos::null) {
+            C2->apply(*x_p1, *Hinv_C2_x_p1);
+            Hinv_C2_x_p1->elementWiseMultiply(1.0, *diagAInvVector_[2], *Hinv_C2_x_p1, 0.0);
+          } else {
+            Hinv_C2_x_p1->putScalar(zero);
+          }
+          
+          RCP<Matrix> F2 = bA->getMatrix(2, 1);
+          // Compute Hinv_F2_x_p2 = diagAInvVector_[2] F2 x_p2
+          if (F2 != Teuchos::null) {
+            F2->apply(*x_p2, *Hinv_F2_x_p2);
+            Hinv_F2_x_p2->elementWiseMultiply(1.0, *diagAInvVector_[2], *Hinv_F2_x_p2, 0.0);
+          } else {
+            Hinv_F2_x_p2->putScalar(zero);
+          }
+
+          // Compute the correction for the damage field
+          // xhat3 = x_p3 - Hinv_F2_x_p2 - Hinv_C2_x_p1
+          xhat3->update(one, *x_p3, zero);
+          xhat3->update(-one, *Hinv_F2_x_p2, one);
+          xhat3->update(-one, *Hinv_C2_x_p1, one);
+          
+          // 7. Update solution vector
+          rcpX->update(one, *bxhat, one); // x^{k+1} = x^{k} + xhat
+        }
+      
+      } else {
+      
+        RCP<MultiVector> residual = MultiVectorFactory::Build(rcpB->getMap(), rcpB->getNumVectors());
+        RCP<BlockedMultiVector> bresidual = Teuchos::rcp_dynamic_cast<BlockedMultiVector>(residual);
+        RCP<MultiVector> r1 = bresidual->getMultiVector(0,bRangeThyraMode);
+        RCP<MultiVector> r2 = bresidual->getMultiVector(1,bRangeThyraMode);
+        RCP<MultiVector> r3 = bresidual->getMultiVector(2,bRangeThyraMode);
+
+        // helper vector 1
+        RCP<MultiVector> xtilde = MultiVectorFactory::Build(rcpX->getMap(), rcpX->getNumVectors());
+        RCP<BlockedMultiVector> bxtilde = Teuchos::rcp_dynamic_cast<BlockedMultiVector>(xtilde);
+        RCP<MultiVector> xtilde1 = bxtilde->getMultiVector(0, bDomainThyraMode);
+        RCP<MultiVector> xtilde2 = bxtilde->getMultiVector(1, bDomainThyraMode);
+        RCP<MultiVector> xtilde3 = bxtilde->getMultiVector(2, bDomainThyraMode);
+
+        // helper vector 2
+        RCP<MultiVector> xhat = MultiVectorFactory::Build(rcpX->getMap(), rcpX->getNumVectors());
+        RCP<BlockedMultiVector> bxhat = Teuchos::rcp_dynamic_cast<BlockedMultiVector>(xhat);
+        RCP<MultiVector> xhat1 = bxhat->getMultiVector(0, bDomainThyraMode);
+        RCP<MultiVector> xhat2 = bxhat->getMultiVector(1, bDomainThyraMode);
+        RCP<MultiVector> xhat3 = bxhat->getMultiVector(2, bDomainThyraMode);
+
+        RCP<MultiVector> tempres = MultiVectorFactory::Build(rcpB->getMap(), rcpB->getNumVectors());
+
+        // Clear solution from previos V cycles in case it is still stored
+        if( InitialGuessIsZero==true )
+          rcpX->putScalar(Teuchos::ScalarTraits<Scalar>::zero());
+    
+        // incrementally improve solution vector X
+        for (LocalOrdinal run = 0; run < nSweeps; ++run) {
+          // 1. calculate current residual = B - A rcpX
+          residual->update(one, *rcpB, zero); // residual = B
+          if(InitialGuessIsZero == false || run > 0)
+            A_->apply(*rcpX, *residual, Teuchos::NO_TRANS, -one, one);
+
+          // 2. Solve A_{11} \Delta \tilde{x}_1 = r_1
+          xtilde1->putScalar(zero);
+          xtilde2->putScalar(zero);
+          xtilde3->putScalar(zero);
+          Inverse_.at(0)->Apply(*xtilde1, *r1);
+
+          // 3. Compute the RHS for the second sub-problem using the solution \tilde{x}_1.
+          //     rhs2 = r_2 - B_2 \Delta \tilde{x}_1  with B_2 = A_{21}
+          RCP<MultiVector> schurCompRHS = rangeMapExtractor_->getVector(1, rcpB->getNumVectors(), bRangeThyraMode);
+          bA->getMatrix(1, 0)->apply(*xtilde1, *schurCompRHS);
+          schurCompRHS->update(one, *r2, -one);
+
+          // 4. Solve this second problem considering specific Schur complement approximation by S = A_{22}
+          Inverse_.at(1)->Apply(*xtilde2, *schurCompRHS);
+
+          // 5. Solve the third problem considering it independent from the others
+          Inverse_.at(2)->Apply(*xtilde3, *r3);
+
+          // 6. Store \tilde{x}
+          // \hat{x}: correction after one iteration
+          xhat3->update(one, *xtilde3, zero);
+      
+          bool useSIMPLE = pL.get<bool>("UseSIMPLE");
+          bool useSIMPLEC = pL.get<bool>("UseSIMPLEC");
+          if (useSIMPLE || useSIMPLEC) {
+            // correct analogous to SIMPLE, using \Delta \tilde{x}_2 and \Delta \tilde{x}_3
+            RCP<MultiVector> B1_xtilde2 = domainMapExtractor_->getVector(0, rcpX->getNumVectors(), bDomainThyraMode);
+            RCP<MultiVector> C1_xtilde3 = domainMapExtractor_->getVector(0, rcpX->getNumVectors(), bDomainThyraMode);
+            RCP<MultiVector> F1_xtilde3 = domainMapExtractor_->getVector(1, rcpX->getNumVectors(), bDomainThyraMode);
+            RCP<MultiVector> Dinv_F1_xtilde3 = domainMapExtractor_->getVector(1, rcpX->getNumVectors(), bDomainThyraMode);
+            RCP<MultiVector> B1_Dinv_F1_xtilde3 = domainMapExtractor_->getVector(0, rcpX->getNumVectors(), bDomainThyraMode);
+
+            Scalar AdampingFactor;
+            Scalar DdampingFactor;
+            bool useEigenDamping = pL.get<bool>("UseEigenDamping");
+            if (useEigenDamping) {
+              Scalar AlambdaMax = bA->getMatrix(0, 0)->GetMaxEigenvalueEstimate();
+              Scalar DlambdaMax = bA->getMatrix(1, 1)->GetMaxEigenvalueEstimate();
+              AdampingFactor = omega / AlambdaMax;
+              DdampingFactor = omega / DlambdaMax;
+              RCP<Teuchos::FancyOStream> out = Teuchos::fancyOStream(Teuchos::rcpFromRef(std::cout));
+              /* *out << "AdampingFactor" << AdampingFactor << std::endl; */
+              /* *out << "DdampingFactor" << DdampingFactor << std::endl; */
+            } else {
+              AdampingFactor = omega;
+              DdampingFactor = omega;
+            }
+
+            // first update \Delta \tilde{x}_2 = \Delta \tilde{x}_2 - A22inv F1 \Delta \tilde{x}_3
+            if (bA->getMatrix(1, 2) != Teuchos::null) {
+              bA->getMatrix(1, 2)->apply(*xtilde2, *B1_xtilde2);
+            } else {
+              F1_xtilde3->putScalar(zero);
+            }
+
+            bool useDiagInv = pL.get<bool>("UseDiagInverse");
+            if (useDiagInv) {
+              RCP<MultiVector> xhat2_temp1 = domainMapExtractor_->getVector(1, rcpX->getNumVectors(), bDomainThyraMode);
+              Inverse_.at(1)->Apply(*xhat2_temp1, *F1_xtilde3);
+              xhat2->update(DdampingFactor, *xhat2_temp1, zero);
+            } else {
+              xhat2->elementWiseMultiply(DdampingFactor, *diagAInvVector_[1], *F1_xtilde3, zero);
+              Dinv_F1_xtilde3->elementWiseMultiply(one, *diagAInvVector_[1], *F1_xtilde3, zero);
+            }
+            xhat2->update(one, *xtilde2, -one);
+
+            // use the updated xhat2 to update \Delta \tilde{x}_1
+            // On higher levels of the hierarchy B1 or C1 can be null
+            // In the block gauss seidel the same is done: [[file:~/.local/src/Trilinos/packages/xpetra/src/BlockedCrsMatrix/Xpetra_BlockedCrsMatrix.hpp::if (Ablock.is_null())]] 
+            if (bA->getMatrix(0, 1) != Teuchos::null) {
+              bA->getMatrix(0, 1)->apply(*xhat2, *B1_xtilde2);
+            } else {
+              B1_xtilde2->putScalar(zero);
+            }
+            if (bA->getMatrix(0, 2) != Teuchos::null) {
+              bA->getMatrix(0, 2)->apply(*xhat3, *C1_xtilde3);
+            } else {
+              C1_xtilde3->putScalar(zero);
+            }
+            if (bA->getMatrix(0, 1) != Teuchos::null) {
+              bA->getMatrix(0, 1)->apply(*Dinv_F1_xtilde3, *B1_Dinv_F1_xtilde3);
+            } else {
+              B1_Dinv_F1_xtilde3->putScalar(zero);
+            }
+
+            // since omega was already applied to \tilde{x}_2, we use 1 here
+            if (useDiagInv) {
+              RCP<MultiVector> xhat1_temp1 = domainMapExtractor_->getVector(0, rcpX->getNumVectors(), bDomainThyraMode);
+              RCP<MultiVector> xhat1_temp2 = domainMapExtractor_->getVector(0, rcpX->getNumVectors(), bDomainThyraMode);
+              Inverse_.at(0)->Apply(*xhat1_temp1, *B1_xtilde2);
+              Inverse_.at(0)->Apply(*xhat1_temp2, *C1_xtilde3);
+              xhat1->update(AdampingFactor, *xhat1_temp1, zero);
+              xhat1->update(AdampingFactor, *xhat1_temp2, one);
+            } else {
+              xhat1->elementWiseMultiply(AdampingFactor, *diagAInvVector_[0], *B1_xtilde2, zero);
+              xhat1->elementWiseMultiply(AdampingFactor, *diagAInvVector_[0], *C1_xtilde3, one);
+              xhat1->elementWiseMultiply(AdampingFactor, *diagAInvVector_[0], *B1_Dinv_F1_xtilde3, -one);
+            }
+            xhat1->update(one, *xtilde1, -one); // \Delta \tilde{x}_1 - Ainv B_1 \Delta \tilde{x}_2
+
+          } else {
+            xhat2->update(one, *xtilde2, zero);
+            xhat1->update(one, *xtilde1, zero);
+          }
+
+          // 7. Update solution vector
+          rcpX->update(one, *bxhat, one); // x^{k+1} = x^{k} + xhat
+        }
+      
+      }      
 
     } else if (FactManager_.size() == 2) {
       
-      RCP<MultiVector> residual = MultiVectorFactory::Build(rcpB->getMap(), rcpB->getNumVectors());
+           RCP<MultiVector> residual = MultiVectorFactory::Build(rcpB->getMap(), rcpB->getNumVectors());
       RCP<BlockedMultiVector> bresidual = Teuchos::rcp_dynamic_cast<BlockedMultiVector>(residual);
       RCP<MultiVector> r1 = bresidual->getMultiVector(0,bRangeThyraMode);
       RCP<MultiVector> r2 = bresidual->getMultiVector(1,bRangeThyraMode);
 
-      // helper vector 1
-      RCP<MultiVector> xtilde = MultiVectorFactory::Build(rcpX->getMap(), rcpX->getNumVectors());
-      RCP<BlockedMultiVector> bxtilde = Teuchos::rcp_dynamic_cast<BlockedMultiVector>(xtilde);
-      RCP<MultiVector> xtilde1 = bxtilde->getMultiVector(0, bDomainThyraMode);
-      RCP<MultiVector> xtilde2 = bxtilde->getMultiVector(1, bDomainThyraMode);
+           // helper vector 1
+           RCP<MultiVector> xtilde = MultiVectorFactory::Build(rcpX->getMap(), rcpX->getNumVectors());
+           RCP<BlockedMultiVector> bxtilde = Teuchos::rcp_dynamic_cast<BlockedMultiVector>(xtilde);
+           RCP<MultiVector> xtilde1 = bxtilde->getMultiVector(0, bDomainThyraMode);
+           RCP<MultiVector> xtilde2 = bxtilde->getMultiVector(1, bDomainThyraMode);
 
-      // helper vector 2
-      RCP<MultiVector> xhat = MultiVectorFactory::Build(rcpX->getMap(), rcpX->getNumVectors());
-      RCP<BlockedMultiVector> bxhat = Teuchos::rcp_dynamic_cast<BlockedMultiVector>(xhat);
-      RCP<MultiVector> xhat1 = bxhat->getMultiVector(0, bDomainThyraMode);
-      RCP<MultiVector> xhat2 = bxhat->getMultiVector(1, bDomainThyraMode);
+           // helper vector 2
+           RCP<MultiVector> xhat = MultiVectorFactory::Build(rcpX->getMap(), rcpX->getNumVectors());
+           RCP<BlockedMultiVector> bxhat = Teuchos::rcp_dynamic_cast<BlockedMultiVector>(xhat);
+           RCP<MultiVector> xhat1 = bxhat->getMultiVector(0, bDomainThyraMode);
+           RCP<MultiVector> xhat2 = bxhat->getMultiVector(1, bDomainThyraMode);
 
-      // Clear solution from previos V cycles in case it is still stored
-      if( InitialGuessIsZero==true )
-        rcpX->putScalar(Teuchos::ScalarTraits<Scalar>::zero());
+           // Clear solution from previos V cycles in case it is still stored
+           if( InitialGuessIsZero==true )
+             rcpX->putScalar(Teuchos::ScalarTraits<Scalar>::zero());
     
-      // incrementally improve solution vector X
-      for (LocalOrdinal run = 0; run < nSweeps; ++run) {
-        // 1. calculate current residual = B - A rcpX
-        residual->update(one, *rcpB, zero); // residual = B
-        if(InitialGuessIsZero == false || run > 0)
-          A_->apply(*rcpX, *residual, Teuchos::NO_TRANS, -one, one);
+           // incrementally improve solution vector X
+           for (LocalOrdinal run = 0; run < nSweeps; ++run) {
+             // 1. calculate current residual = B - A rcpX
+             residual->update(one, *rcpB, zero); // residual = B
+             if(InitialGuessIsZero == false || run > 0)
+               A_->apply(*rcpX, *residual, Teuchos::NO_TRANS, -one, one);
 
-        // 2. Solve A_{11} \Delta \tilde{x}_1 = r_1
-        xtilde1->putScalar(zero);
-        xtilde2->putScalar(zero);
-        Inverse_.at(0)->Apply(*xtilde1, *r1);
+             // 2. Solve A_{11} \Delta \tilde{x}_1 = r_1
+             xtilde1->putScalar(zero);
+             xtilde2->putScalar(zero);
+             Inverse_.at(0)->Apply(*xtilde1, *r1);
 
-        // 3. Compute the RHS for the second sub-problem using the solution \tilde{x}_1.
-        //     rhs2 = r_2 - B_2 \Delta \tilde{x}_1  with B_2 = A_{21}
-        RCP<MultiVector> schurCompRHS = rangeMapExtractor_->getVector(1, rcpB->getNumVectors(), bRangeThyraMode);
-        bA->getMatrix(1, 0)->apply(*xtilde1, *schurCompRHS);
-        schurCompRHS->update(one, *r2, -one);
+             // 3. Compute the RHS for the second sub-problem using the solution \tilde{x}_1.
+             //     rhs2 = r_2 - B_2 \Delta \tilde{x}_1  with B_2 = A_{21}
+             RCP<MultiVector> schurCompRHS = rangeMapExtractor_->getVector(1, rcpB->getNumVectors(), bRangeThyraMode);
+             bA->getMatrix(1, 0)->apply(*xtilde1, *schurCompRHS);
+             schurCompRHS->update(one, *r2, -one);
 
-        // 4. Solve this second problem considering specific Schur complement approximation by S = A_{22}
-        Inverse_.at(1)->Apply(*xtilde2, *schurCompRHS);
-        // Update the solution for the second problem
-        xhat2->update(one, *xtilde2, zero);
+             // 4. Solve this second problem considering specific Schur complement approximation by S = A_{22}
+             Inverse_.at(1)->Apply(*xtilde2, *schurCompRHS);
+             // Update the solution for the second problem
+             xhat2->update(one, *xtilde2, zero);
 
-        // SIMPLE-like correction for the first problem variable
-        bool useSIMPLE = pL.get<bool>("UseSIMPLE");
-        bool useSIMPLEC = pL.get<bool>("UseSIMPLEC");
-        if (useSIMPLE || useSIMPLEC) {
-          // correct analogous to SIMPLE, using \Delta \tilde{x}_2 and \Delta \tilde{x}_3
-          RCP<MultiVector> B1_xtilde2 = domainMapExtractor_->getVector(0, rcpX->getNumVectors(), bDomainThyraMode);
+             // SIMPLE-like correction for the first problem variable
+             bool useSIMPLE = pL.get<bool>("UseSIMPLE");
+             bool useSIMPLEC = pL.get<bool>("UseSIMPLEC");
+             if (useSIMPLE || useSIMPLEC) {
+               // correct analogous to SIMPLE, using \Delta \tilde{x}_2 and \Delta \tilde{x}_3
+               RCP<MultiVector> B1_xtilde2 = domainMapExtractor_->getVector(0, rcpX->getNumVectors(), bDomainThyraMode);
 
-          Scalar AdampingFactor;
-          Scalar DdampingFactor;
-          bool useEigenDamping = pL.get<bool>("UseEigenDamping");
-          if (useEigenDamping) {
-            Scalar AlambdaMax = bA->getMatrix(0, 0)->GetMaxEigenvalueEstimate();
-            Scalar DlambdaMax = bA->getMatrix(1, 1)->GetMaxEigenvalueEstimate();
-            AdampingFactor = omega / AlambdaMax;
-            DdampingFactor = omega / DlambdaMax;
-            RCP<Teuchos::FancyOStream> out = Teuchos::fancyOStream(Teuchos::rcpFromRef(std::cout));
-            /* *out << "AdampingFactor" << AdampingFactor << std::endl; */
-            /* *out << "DdampingFactor" << DdampingFactor << std::endl; */
-          } else {
-            AdampingFactor = omega;
-            DdampingFactor = omega;
-          }
+               Scalar AdampingFactor;
+               Scalar DdampingFactor;
+               bool useEigenDamping = pL.get<bool>("UseEigenDamping");
+               if (useEigenDamping) {
+                 Scalar AlambdaMax = bA->getMatrix(0, 0)->GetMaxEigenvalueEstimate();
+                 Scalar DlambdaMax = bA->getMatrix(1, 1)->GetMaxEigenvalueEstimate();
+                 AdampingFactor = omega / AlambdaMax;
+                 DdampingFactor = omega / DlambdaMax;
+                 RCP<Teuchos::FancyOStream> out = Teuchos::fancyOStream(Teuchos::rcpFromRef(std::cout));
+                 /* *out << "AdampingFactor" << AdampingFactor << std::endl; */
+                 /* *out << "DdampingFactor" << DdampingFactor << std::endl; */
+               } else {
+                 AdampingFactor = omega;
+                 DdampingFactor = omega;
+               }
 
-          // Update based on damping factor
-          xhat2->update(DdampingFactor, *xhat2, zero);
+               // Update based on damping factor
+               xhat2->update(DdampingFactor, *xhat2, zero);
           
-          // use the updated xhat2 to update \Delta \tilde{x}_1
-          bA->getMatrix(0, 1)->apply(*xhat2, *B1_xtilde2);
+               // use the updated xhat2 to update \Delta \tilde{x}_1
+               bA->getMatrix(0, 1)->apply(*xhat2, *B1_xtilde2);
 
-          bool useDiagInv = pL.get<bool>("UseDiagInverse");
-          if (useDiagInv) {
-            RCP<MultiVector> xhat1_temp1 = domainMapExtractor_->getVector(0, rcpX->getNumVectors(), bDomainThyraMode);
-            Inverse_.at(0)->Apply(*xhat1_temp1, *B1_xtilde2);
-            xhat1->update(AdampingFactor, *xhat1_temp1, zero);
-          } else {
-            xhat1->elementWiseMultiply(AdampingFactor, *diagAInvVector_[0], *B1_xtilde2, zero);
-          }
-          xhat1->update(one, *xtilde1, -one);
+               bool useDiagInv = pL.get<bool>("UseDiagInverse");
+               if (useDiagInv) {
+                 RCP<MultiVector> xhat1_temp1 = domainMapExtractor_->getVector(0, rcpX->getNumVectors(), bDomainThyraMode);
+                 Inverse_.at(0)->Apply(*xhat1_temp1, *B1_xtilde2);
+                 xhat1->update(AdampingFactor, *xhat1_temp1, zero);
+               } else {
+                 xhat1->elementWiseMultiply(AdampingFactor, *diagAInvVector_[0], *B1_xtilde2, zero);
+               }
+               xhat1->update(one, *xtilde1, -one);
 
-        } else {
-          xhat1->update(one, *xtilde1, zero);
-        }
+             } else {
+               xhat1->update(one, *xtilde1, zero);
+             }
 
-        // 7. Update solution vector
-        rcpX->update(one, *bxhat, one); // x^{k+1} = x^{k} + xhat
-      }
+             // 7. Update solution vector
+             rcpX->update(one, *bxhat, one); // x^{k+1} = x^{k} + xhat
+           }
    
     }
     
     if (bCopyResultX == true) {
-      RCP<MultiVector> Xmerged = bX->Merge();
+           RCP<MultiVector> Xmerged = bX->Merge();
       X.update(one, *Xmerged, zero);
     }
   }
