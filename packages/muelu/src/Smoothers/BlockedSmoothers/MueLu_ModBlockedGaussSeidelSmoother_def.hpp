@@ -54,7 +54,9 @@
 #include "MueLu_ConfigDefs.hpp"
 
 #include <Xpetra_BlockReorderManager.hpp>
+#include <Xpetra_MatrixFactory.hpp>
 #include <Xpetra_Matrix.hpp>
+#include <Xpetra_MatrixMatrix.hpp>
 #include <Xpetra_BlockedCrsMatrix.hpp>
 #include <Xpetra_ReorderedBlockedCrsMatrix.hpp>
 #include <Xpetra_ReorderedBlockedMultiVector.hpp>
@@ -418,8 +420,7 @@ namespace MueLu {
           RCP<Matrix> F1_Hinv_C2 = MatrixFactory::BuildCopy(B2, false);
           F1_Hinv_C2->Xpetra::MatrixMatrix<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Multiply(one, *F1, false, *Hinv_C2, false, zero);
           RCP<Matrix> Schur_B2 = MatrixFactory::BuildCopy(B2, false);
-          Schur_B2->Xpetra::MatrixMatrix::Add(-one, *F1_Hinv_C2, one);
-
+          Schur_B2->Xpetra::MatrixMatrix<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Add(-one, *F1_Hinv_C2, one);
           
           // TODO: this is a temporary solution, we need to implement a smoother for the Schur complement.
           // NOTE: using the smoother for D^{-1} instead of a smoother for the Schur
@@ -449,7 +450,6 @@ namespace MueLu {
           // 7. Update solution vector
           rcpX->update(one, *bxhat, one); // x^{k+1} = x^{k} + xhat
         }
-      
       
       }
       else {
