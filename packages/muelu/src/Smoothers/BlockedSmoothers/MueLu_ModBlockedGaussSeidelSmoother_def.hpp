@@ -96,6 +96,7 @@ namespace MueLu {
     validParamList->set<bool>("UseSIMPLEC", false, "Use SIMPLEC to correct displacement field (default = false)");
     validParamList->set<bool>("UpperTriangular", false, "Use upper triangular instead of lower (default = false)");
     validParamList->set<bool>("UseDiagInverse", false, "Use diagonal inverse in the SIMPLE (default = false)");
+    validParamList->set<bool>("UseSIMPLEUL", false, "Use SIMPLE to correct damage field (default = false)");
 
     return validParamList;
   }
