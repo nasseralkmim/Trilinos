@@ -418,9 +418,9 @@ namespace MueLu {
           RCP<Matrix> Hinv_C2 = MatrixFactory::BuildCopy(C2, false);
           Hinv_C2->leftScale(*diagAInvVector_[2]);
           RCP<Matrix> F1_Hinv_C2 = MatrixFactory::BuildCopy(B2, false);
-          F1_Hinv_C2->Xpetra::MatrixMatrix<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Multiply(one, *F1, false, *Hinv_C2, false, zero);
+          Xpetra::MatrixMatrix<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Multiply(*F1, false, *Hinv_C2, false, *F1_Hinv_C2, true, true);
           RCP<Matrix> Schur_B2 = MatrixFactory::BuildCopy(B2, false);
-          Schur_B2->Xpetra::MatrixMatrix<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Add(-one, *F1_Hinv_C2, one);
+          Xpetra::MatrixMatrix<Scalar, LocalOrdinal, GlobalOrdinal, Node>::TwoMatrixAdd(*F1_Hinv_C2, false, -one, *B2, false, one, Schur_B2, GetOStream(Statistics2));
           
           // TODO: this is a temporary solution, we need to implement a smoother for the Schur complement.
           // NOTE: using the smoother for D^{-1} instead of a smoother for the Schur
