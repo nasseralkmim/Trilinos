@@ -439,12 +439,12 @@ namespace MueLu {
           // Compute correction for damage
           RCP<MultiVector> Hinv_C2_x_p1 = domainMapExtractor_->getVector(2, rcpX->getNumVectors(), bDomainThyraMode);
           RCP<MultiVector> Hinv_F2_x_p2 = domainMapExtractor_->getVector(2, rcpX->getNumVectors(), bDomainThyraMode);
-          // Compute diagAInvVecto_[2] C2 x_p1
+          // Compute Hinv_C2_x_p1 = diagAInvVecto_[2] C2 x_p1
           C2->apply(*x_p1, *Hinv_C2_x_p1);
-          Hinv_C2_x_p1->elementWiseMultiply(1.0, *Hinv_C2_x_p1, *diagAInvVector_[2], 0.0);
-          // Compute diagAInvVector_[2] F2 x_p2
+          Hinv_C2_x_p1->elementWiseMultiply(1.0, *diagAInvVector_[2], *Hinv_C2_x_p1, 0.0);
+          // Compute Hinv_F2_x_p2 = diagAInvVector_[2] F2 x_p2
           F1->apply(*x_p2, *Hinv_F2_x_p2);
-          Hinv_F2_x_p2->elementWiseMultiply(1.0, *Hinv_F2_x_p2, *diagAInvVector_[2], 0.0);
+          Hinv_F2_x_p2->elementWiseMultiply(1.0, *diagAInvVector_[2], *Hinv_F2_x_p2, 0.0);
 
           // Compute the correction for the damage field
           // xhat3 = x_p3 - Hinv_F2_x_p2 - Hinv_C2_x_p1
