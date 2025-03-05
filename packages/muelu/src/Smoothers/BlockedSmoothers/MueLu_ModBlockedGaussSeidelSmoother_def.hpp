@@ -350,6 +350,8 @@ namespace MueLu {
       // Decide if use SIMPLE with Upper triangular or usual lower triangualr block Gauss-Seidel with or without simple
       bool useSIMPLEUL = pL.get<bool>("UseSIMPLEUL");
       if (useSIMPLEUL) {
+        RCP<Teuchos::FancyOStream> out = Teuchos::fancyOStream(Teuchos::rcpFromRef(std::cout));
+        *out << "Using modBGS with SIMPLEUL-like algorithm" << std::endl;
         
         RCP<MultiVector> residual = MultiVectorFactory::Build(rcpB->getMap(), rcpB->getNumVectors());
         RCP<BlockedMultiVector> bresidual = Teuchos::rcp_dynamic_cast<BlockedMultiVector>(residual);
