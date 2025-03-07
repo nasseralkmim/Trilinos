@@ -72,6 +72,9 @@
 #include "MueLu_HierarchyUtils.hpp"
 #include "MueLu_SmootherBase.hpp"
 
+// include files for default FactoryManager
+#include "MueLu_CustomSchurComplementFactory.hpp"
+
 namespace MueLu {
 
   template <class Scalar,class LocalOrdinal, class GlobalOrdinal, class Node>
@@ -205,6 +208,15 @@ namespace MueLu {
     }
     bool useSIMPLEUL = pL.get<bool>("UseSIMPLEUL");
     if (useSIMPLEUL) {
+      *out << "Using modBGS with SIMPLEUL-like algorithm for: " << blockSize_ << " blocks"  << std::endl;
+      for (int i = 0; i < blockSize_; i++) {
+        Teuchos::RCP<Vector> AiiDiag = VectorFactory::Build(bA->getMatrix(i, i)->getRowMap());
+        bA->getMatrix(i, i)->getLocalDiagCopy(*AiiDiag);
+        diagAInvVector_[i] = Utilities::GetInverse(AiiDiag);
+      }
+    }
+    bool useSIMPLEUL_v2 = pL.get<bool>("UseSIMPLEUL-v2");
+    if (useSIMPLEUL_v2) {
       *out << "Using modBGS with SIMPLEUL-like algorithm for: " << blockSize_ << " blocks"  << std::endl;
       for (int i = 0; i < blockSize_; i++) {
         Teuchos::RCP<Vector> AiiDiag = VectorFactory::Build(bA->getMatrix(i, i)->getRowMap());
