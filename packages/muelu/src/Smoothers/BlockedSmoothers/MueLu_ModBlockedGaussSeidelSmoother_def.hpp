@@ -217,11 +217,21 @@ namespace MueLu {
     }
     bool useSIMPLEUL_v2 = pL.get<bool>("UseSIMPLEUL-v2");
     if (useSIMPLEUL_v2) {
-      *out << "Using modBGS with SIMPLEUL-like algorithm for: " << blockSize_ << " blocks"  << std::endl;
+      *out << "Using modBGS with SIMPLEUL-V2-like algorithm for: " << blockSize_ << " blocks"  << std::endl;
       for (int i = 0; i < blockSize_; i++) {
         Teuchos::RCP<Vector> AiiDiag = VectorFactory::Build(bA->getMatrix(i, i)->getRowMap());
         bA->getMatrix(i, i)->getLocalDiagCopy(*AiiDiag);
         diagAInvVector_[i] = Utilities::GetInverse(AiiDiag);
+      }
+      for(it = FactManager_.begin(); it!=FactManager_.end(); ++it) {
+        SetFactoryManager currentSFM  (rcpFromRef(currentLevel), *it);
+
+        RCP<Matrix> originalA = currentLevel.Get< RCP<Matrix> >("A",(*it)->GetFactory("A").get());
+        
+        // extract Smoother for current block row (BGS ordering)
+        RCP<const SmootherBase> Smoo = currentLevel.Get< RCP<SmootherBase> >("PreSmoother",(*it)->GetFactory("Smoother").get());
+        //Inverse_.push_back(Smoo); // original line
+
       }
     }
     // use eigenvalue damping only with "SIMPLE" approaches
