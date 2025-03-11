@@ -49,7 +49,7 @@
 
 #include "MueLu_SmootherPrototype.hpp"
 #include "MueLu_FactoryManagerBase.hpp"
-#include "MueLu_CustomSchurAhatFactory.hpp"
+#include "MueLu_CustomSchurAhatFactory_def.hpp"
 #include "MueLu_VerbosityLevel.hpp"
 
 namespace MueLu {

@@ -72,57 +72,15 @@ class CustomSchurAhatFactory : public FactoryBase {
 #include "MueLu_UseShortNames.hpp"
 public:
 
-  CustomSchurAhatFactory() { }
-  virtual ~CustomSchurAhatFactory() { }
+  CustomSchurAhatFactory();
+  virtual ~CustomSchurAhatFactory();
 
-  RCP<const ParameterList> GetValidParameterList() const {
-    RCP<ParameterList> validParamList = rcp(new ParameterList());
-    validParamList->set<RCP<const FactoryBase>>("A", null, "Factory for original matrix A");
-    return validParamList;
-  }
-
-  void DeclareInput(Level& currentLevel) const {
-    currentLevel.DeclareInput("A",this->GetFactory("A").get());
-  }
-
-  void Build(Level& currentLevel) const {
-    FactoryMonitor m(*this, "Computing Ahat matrix", currentLevel);
-    
-    RCP<Matrix> A = Factory::Get< RCP<Matrix> >(currentLevel, "A");
-    RCP<BlockedCrsMatrix> bA = rcp_dynamic_cast<BlockedCrsMatrix>(A);
-    TEUCHOS_TEST_FOR_EXCEPTION(bA.is_null(), Exceptions::BadCast,
-                             "Input matrix A must be a BlockedCrsMatrix");
-
-    // Extract blocks
-    RCP<Matrix> A11 = bA->getMatrix(0, 0);
-    RCP<Matrix> C1 = bA->getMatrix(0, 2);
-    RCP<Matrix> C2 = bA->getMatrix(2, 0);
-    RCP<Matrix> H = bA->getMatrix(2, 2);
-
-    // Get inverse of H diagonal
-    RCP<Vector> diagH = VectorFactory::Build(H->getRowMap());
-    H->getLocalDiagCopy(*diagH);
-    RCP<Vector> diagHinv = Utilities::GetInverse(diagH);
-
-    // Compute C1 * (1/diag(H)) * C2
-    RCP<Matrix> HinvC2 = MatrixFactory::BuildCopy(C2);
-    HinvC2->leftScale(*diagHinv);
-    
-    RCP<Matrix> C1HinvC2 = MatrixFactory::BuildCopy(A11);
-    MatrixMatrix::Multiply(*C1, false, *HinvC2, false, *C1HinvC2, true);
-
-    // Compute Ahat = A11 - C1 * (1/diag(H)) * C2
-    RCP<Matrix> Ahat = MatrixFactory::BuildCopy(A11);
-    MatrixMatrix::TwoMatrixAdd(*C1HinvC2, false, -1.0, *A11, false, 1.0, Ahat);
-
-    // Store result
-    Set(currentLevel, "A", Ahat);
-  }
-
-  std::string description() const override { return "CustomSchurAhatFactory"; }
-  void print(Teuchos::FancyOStream &out, const VerbLevel verbLevel) const override {
-    out << description() << std::endl;
-  }
+  RCP<const ParameterList> GetValidParameterList() const;
+  void DeclareInput(Level& currentLevel) const;
+  void Build(Level& currentLevel) const;
+  
+  std::string description() const override;
+  void print(Teuchos::FancyOStream &out, const MueLu::VerbLevel verbLevel = MueLu::VerbLevel::Default) const override;
 };
 
 } // namespace MueLu
