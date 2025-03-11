@@ -242,7 +242,16 @@ namespace MueLu {
         // extract Smoother for current block row (BGS ordering)
         RCP<const SmootherBase> Smoo = currentLevel.Get< RCP<SmootherBase> >("PreSmoother",(*it)->GetFactory("Smoother").get());
         Inverse_.push_back(Smoo);
+      }
 
+      // Set up Ahat smoother if its factory manager is provided
+      if (!AhatFactoryManager_.is_null()) {
+        // Set up Ahat smoother
+        SetFactoryManager currentSFM(rcpFromRef(currentLevel), AhatFactoryManager_);
+
+        // Get the Ahat smoother
+        AhatSmoother_ = currentLevel.Get< RCP<SmootherBase> >("PreSmoother",
+                                                             AhatFactoryManager_->GetFactory("Smoother").get());
       }
     }
     // use eigenvalue damping only with "SIMPLE" approaches
