@@ -57,6 +57,7 @@ namespace MueLu {
 
   template <class Scalar,class LocalOrdinal, class GlobalOrdinal, class Node>
   class ModBlockedGaussSeidelSmoother : public SmootherPrototype<Scalar,LocalOrdinal,GlobalOrdinal,Node> {
+#undef MUELU_MODBLOCKEDGAUSSSEIDELSMOOTHER_SHORT
 #include "MueLu_UseShortNames.hpp"
 public:
 
