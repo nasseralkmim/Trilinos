@@ -235,7 +235,7 @@ namespace MueLu {
         diagAInvVector_[i] = Utilities::GetInverse(AiiDiag);
       }
       for(it = FactManager_.begin(); it!=FactManager_.end(); ++it) {
-        SetFactoryManager currentSFM  (rcpFromRef(currentLevel), *it);
+        SetFactoryManager currentSFM(rcpFromRef(currentLevel), *it);
 
         RCP<Matrix> originalA = currentLevel.Get< RCP<Matrix> >("A",(*it)->GetFactory("A").get());
         
@@ -244,15 +244,32 @@ namespace MueLu {
         Inverse_.push_back(Smoo);
       }
 
-      // Set up Ahat smoother if its factory manager is provided
-      if (!AhatFactoryManager_.is_null()) {
-        // Set up Ahat smoother
-        SetFactoryManager currentSFM(rcpFromRef(currentLevel), AhatFactoryManager_);
+      // Create and set up AhatFactoryManager when SIMPLEUL-v2 is enabled
+      RCP<FactoryManager> AhatFM = rcp(new FactoryManager());
+      
+      // Create and configure Ahat factory
+      RCP<CustomSchurAhatFactory<Scalar,LocalOrdinal,GlobalOrdinal,Node> > AhatFactory = 
+          rcp(new CustomSchurAhatFactory<Scalar,LocalOrdinal,GlobalOrdinal,Node>());
+      
+      // Set the input factory for matrix A
+      AhatFactory->SetFactory("A", this->GetFactory("A"));
 
-        // Get the Ahat smoother
-        AhatSmoother_ = currentLevel.Get< RCP<SmootherBase> >("PreSmoother",
-                                                             AhatFactoryManager_->GetFactory("Smoother").get());
-      }
+      // Create smoother factory for Ahat
+      // Using same smoother type as the first block
+      RCP<const FactoryManagerBase> firstBlockFM = FactManager_.at(0);
+      RCP<Factory> AhatSmootherFactory = firstBlockFM->GetFactory("Smoother");
+      
+      // Configure factory manager
+      AhatFM->SetFactory("A", AhatFactory);
+      AhatFM->SetFactory("Smoother", AhatSmootherFactory);
+
+      // Set the factory manager
+      SetAhatFactoryManager(AhatFM);
+
+      // Set up Ahat smoother
+      SetFactoryManager currentSFM(rcpFromRef(currentLevel), AhatFactoryManager_);
+      AhatSmoother_ = currentLevel.Get< RCP<SmootherBase> >("PreSmoother",
+                                                           AhatFactoryManager_->GetFactory("Smoother").get());
     }
     // use eigenvalue damping only with "SIMPLE" approaches
     bool useEigenDamping = pL.get<bool>("UseEigenDamping");
