@@ -47,6 +47,7 @@
 #ifndef MUELU_MODBLOCKEDGAUSSSEIDELSMOOTHER_DECL_HPP_
 #define MUELU_MODBLOCKEDGAUSSSEIDELSMOOTHER_DECL_HPP_
 
+#include "MueLu_ModBlockedGaussSeidelSmoother_fwd.hpp"
 #include "MueLu_SmootherPrototype.hpp"
 #include "MueLu_FactoryManagerBase.hpp"
 #include "MueLu_CustomSchurAhatFactory_def.hpp"
