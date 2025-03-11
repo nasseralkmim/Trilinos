@@ -151,8 +151,8 @@ namespace MueLu {
       currentLevel.DeclareInput("A",(*it)->GetFactory("A").get());
     }
 
-+   const ParameterList & pL = Factory::GetParameterList();
-+   if (pL.get<bool>("UseSIMPLEUL-v2")) {
+   const ParameterList & pL = Factory::GetParameterList();
+   if (pL.get<bool>("UseSIMPLEUL-v2")) {
       SetFactoryManager currentSFM(rcpFromRef(currentLevel), AhatFactoryManager_);
       currentLevel.DeclareInput("PreSmoother", AhatFactoryManager_->GetFactory("Smoother").get());
       currentLevel.DeclareInput("A", AhatFactoryManager_->GetFactory("A").get());
