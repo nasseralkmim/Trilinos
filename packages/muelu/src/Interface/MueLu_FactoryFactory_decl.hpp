@@ -132,6 +132,7 @@
 #include "MueLu_SegregatedAFactory.hpp"
 #include "MueLu_SemiCoarsenPFactory.hpp"
 #include "MueLu_SchurComplementFactory.hpp"
+#include "MueLu_CustomSchurAhatFactory.hpp"
 #include "MueLu_SimpleSmoother.hpp"
 #include "MueLu_SmootherFactory.hpp"
 #include "MueLu_StructuredAggregationFactory.hpp"
