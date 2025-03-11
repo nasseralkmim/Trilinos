@@ -72,8 +72,6 @@
 #include "MueLu_HierarchyUtils.hpp"
 #include "MueLu_SmootherBase.hpp"
 
-// include files for default FactoryManager
-#include "MueLu_CustomSchurComplementFactory.hpp"
 
 namespace MueLu {
 
@@ -245,7 +243,8 @@ namespace MueLu {
       }
 
       // Create and set up AhatFactoryManager when SIMPLEUL-v2 is enabled
-      RCP<FactoryManager> AhatFM = rcp(new FactoryManager());
+      RCP<FactoryManager<Scalar,LocalOrdinal,GlobalOrdinal,Node> > AhatFM = 
+          rcp(new FactoryManager<Scalar,LocalOrdinal,GlobalOrdinal,Node>());
       
       // Create and configure Ahat factory that computes Ahat = A11 - C1 * (1/diag(H)) * C2
       RCP<CustomSchurAhatFactory<Scalar,LocalOrdinal,GlobalOrdinal,Node> > AhatFactory = 
@@ -260,8 +259,8 @@ namespace MueLu {
       RCP<Factory> AhatSmootherFactory = firstBlockFM->GetFactory("Smoother");
       
       // Configure factory manager
-      AhatFM->SetFactory("A", AhatFactory);
-      AhatFM->SetFactory("Smoother", AhatSmootherFactory);
+      AhatFM->SetFactory("A", rcp_static_cast<Factory>(AhatFactory));
+      AhatFM->SetFactory("Smoother", rcp_static_cast<Factory>(AhatSmootherFactory));
 
       // Set the factory manager
       SetAhatFactoryManager(AhatFM);
@@ -863,10 +862,10 @@ namespace MueLu {
     }
   }
 
-  template <class Scalar,class LocalOrdinal, class GlobalOrdinal, class Node>
-  RCP<MueLu::SmootherPrototype<Scalar, LocalOrdinal, GlobalOrdinal, Node> > ModBlockedGaussSeidelSmoother<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Copy() const {
-    return rcp( new ModBlockedGaussSeidelSmoother(*this) );
-  }
+  // template <class Scalar,class LocalOrdinal, class GlobalOrdinal, class Node>
+  // RCP<MueLu::SmootherPrototype<Scalar, LocalOrdinal, GlobalOrdinal, Node> > ModBlockedGaussSeidelSmoother<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Copy() const {
+  //   return rcp( new ModBlockedGaussSeidelSmoother(*this) );
+  // }
 
   template <class Scalar,class LocalOrdinal, class GlobalOrdinal, class Node>
   std::string ModBlockedGaussSeidelSmoother<Scalar, LocalOrdinal, GlobalOrdinal, Node>::description() const {
