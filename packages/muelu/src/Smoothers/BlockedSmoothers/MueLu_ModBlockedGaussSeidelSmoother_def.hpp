@@ -71,6 +71,7 @@
 #include "MueLu_Monitor.hpp"
 #include "MueLu_HierarchyUtils.hpp"
 #include "MueLu_SmootherBase.hpp"
+#include "MueLu_FactoryManager.hpp"
 
 
 namespace MueLu {
