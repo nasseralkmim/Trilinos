@@ -257,11 +257,11 @@ namespace MueLu {
       // Create smoother factory for Ahat
       // Using same smoother type as the first block
       RCP<const FactoryManagerBase> firstBlockFM = FactManager_.at(0);
-      RCP<Factory> AhatSmootherFactory = firstBlockFM->GetFactory("Smoother");
+      RCP<const FactoryBase> AhatSmootherFactory = firstBlockFM->GetFactory("Smoother");
       
       // Configure factory manager
-      AhatFM->SetFactory("A", rcp_static_cast<Factory>(AhatFactory));
-      AhatFM->SetFactory("Smoother", rcp_static_cast<Factory>(AhatSmootherFactory));
+      AhatFM->SetFactory("A", AhatFactory);
+      AhatFM->SetFactory("Smoother", AhatSmootherFactory);
 
       // Set the factory manager
       SetAhatFactoryManager(AhatFM);
