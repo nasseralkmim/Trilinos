@@ -47,11 +47,24 @@
 #ifndef MUELU_MODBLOCKEDGAUSSSEIDELSMOOTHER_DECL_HPP_
 #define MUELU_MODBLOCKEDGAUSSSEIDELSMOOTHER_DECL_HPP_
 
+#include "MueLu_ConfigDefs.hpp"
+
+#include <Teuchos_ParameterList.hpp>
+
+#include <Xpetra_Matrix_fwd.hpp>
+#include <Xpetra_BlockedCrsMatrix_fwd.hpp>
+#include <Xpetra_ReorderedBlockedCrsMatrix_fwd.hpp>
+#include <Xpetra_MultiVectorFactory_fwd.hpp>
+#include <Xpetra_MapExtractor_fwd.hpp>
+
 #include "MueLu_ModBlockedGaussSeidelSmoother_fwd.hpp"
+
 #include "MueLu_SmootherPrototype.hpp"
-#include "MueLu_FactoryManagerBase.hpp"
-#include "MueLu_CustomSchurAhatFactory_def.hpp"
-#include "MueLu_VerbosityLevel.hpp"
+#include "MueLu_FactoryBase_fwd.hpp"
+#include "MueLu_FactoryManagerBase_fwd.hpp"
+#include "MueLu_SmootherBase_fwd.hpp"
+#include "MueLu_Utilities_fwd.hpp"
+#include "MueLu_CustomSchurAhatFactory_fwd.hpp"
 
 namespace MueLu {
 

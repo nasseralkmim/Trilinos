@@ -43,47 +43,21 @@
 // ***********************************************************************
 //
 // @HEADER
-#ifndef MUELU_CUSTOMSCHURAHATFACTORY_DECL_HPP
-#define MUELU_CUSTOMSCHURAHATFACTORY_DECL_HPP
-
-#include "MueLu_ConfigDefs.hpp"
-
-#include <Teuchos_ParameterList.hpp>
-
-#include <Xpetra_CrsMatrix_fwd.hpp>
-#include <Xpetra_CrsMatrixWrap_fwd.hpp>
-#include <Xpetra_MapExtractor_fwd.hpp>
-#include <Xpetra_Map_fwd.hpp>
-#include <Xpetra_StridedMap_fwd.hpp>
+#ifndef MUELU_CUSTOMSCHURAHATFACTORY_FWD_HPP
+#define MUELU_CUSTOMSCHURAHATFACTORY_FWD_HPP
 
 
-#include "MueLu_FactoryBase_fwd.hpp"
-#include "MueLu_FactoryManagerBase_fwd.hpp"
-#include "MueLu_SingleLevelFactoryBase.hpp"
-#include "MueLu_SmootherBase_fwd.hpp"
-#include "MueLu_SmootherPrototype.hpp"
-#include "MueLu_Utilities_fwd.hpp"
+
 
 namespace MueLu {
+  template <class Scalar, class LocalOrdinal, class GlobalOrdinal, class Node>
+  class CustomSchurAhatFactory;
+}
 
-template <class Scalar = double, 
-          class LocalOrdinal = int,
-          class GlobalOrdinal = LocalOrdinal, 
-          class Node = KokkosClassic::DefaultNode::DefaultNodeType>
-class CustomSchurAhatFactory : public SingleLevelFactoryBase {
-#undef MUELU_CUSTOMSCHURAHATFACTORY_SHORT
-#include "MueLu_UseShortNames.hpp"
-public:
-
-  CustomSchurAhatFactory();
-  virtual ~CustomSchurAhatFactory();
-
-  RCP<const ParameterList> GetValidParameterList() const;
-  void DeclareInput(Level& currentLevel) const;
-  void Build(Level& currentLevel) const;
-  
-};
-
-} // namespace MueLu
-
+#ifndef MUELU_CUSTOMSCHURAHATFACTORY_SHORT
+#define MUELU_CUSTOMSCHURAHATFACTORY_SHORT
 #endif
+
+
+
+#endif // MUELU_CUSTOMSCHURAHATFACTORY_FWD_HPP

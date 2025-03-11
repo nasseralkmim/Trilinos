@@ -759,13 +759,16 @@ namespace MueLu {
       return rcp(new SmootherFactory(rcp(new DirectSolver(type, params)), Teuchos::null));
     }
 
-    template <class T> // T must implement the Factory interface
-    RCP<FactoryBase> BuildBlockedSmoother(const Teuchos::ParameterList& paramList, const FactoryMap& factoryMapIn, const FactoryManagerMap& factoryManagersIn) const {
-      // read in sub lists
-      RCP<ParameterList> paramListNonConst = rcp(new ParameterList(paramList));
+    //RCP<FactoryBase> BuildBlockedPFactory(const Teuchos::ParameterList& paramList, const FactoryMap& factoryMapIn, const FactoryManagerMap& factoryManagersIn) const;
 
-      // internal vector of factory managers
-      std::vector<RCP<FactoryManager> > facManagers;
+    template <class T> // T must implement the Factory interface
+    RCP<FactoryBase> BuildBlockedSmoother(const Teuchos::ParameterList& paramList, const FactoryMap& factoryMapIn, const FactoryManagerMap& factoryManagersIn) const;
+
+    template <class T> // T must implement the Factory interface
+    RCP<T> BuildBlockedFactory(const Teuchos::ParameterList & paramList, const FactoryMap& factoryMapIn, const FactoryManagerMap& factoryManagersIn) const;
+
+    template <class T> // T must implement the Factory interface
+    RCP<T> BuildBlockedCoordFactory(const Teuchos::ParameterList & paramList, const FactoryMap& factoryMapIn, const FactoryManagerMap& factoryManagersIn) const;
 
       // loop over all "block%i" sublists in parameter list
       int blockid = 1;
