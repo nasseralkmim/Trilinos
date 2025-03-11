@@ -43,8 +43,8 @@
 // ***********************************************************************
 //
 // @HEADER
-#ifndef MUELU_CUSTOMSCHURAHATFACTORY_DECL_HPP
-#define MUELU_CUSTOMSCHURAHATFACTORY_DECL_HPP
+#ifndef MUELU_CUSTOMSCHURAHATFACTORY_DECL_HPP_
+#define MUELU_CUSTOMSCHURAHATFACTORY_DECL_HPP_
 
 #include "MueLu_ConfigDefs.hpp"
 
@@ -86,4 +86,5 @@ public:
 
 } // namespace MueLu
 
-#endif
+#define MUELU_CUSTOMSCHURAHATFACTORY_SHORT
+#endif /* MUELU_CUSTOMSCHURAHATFACTORY_DECL_HPP_ */

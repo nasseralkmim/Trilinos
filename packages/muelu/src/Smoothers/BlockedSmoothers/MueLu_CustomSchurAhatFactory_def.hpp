@@ -43,8 +43,8 @@
 // ***********************************************************************
 //
 // @HEADER
-#ifndef MUELU_CUSTOMSCHURAHATFACTORY_DEF_HPP
-#define MUELU_CUSTOMSCHURAHATFACTORY_DEF_HPP
+#ifndef MUELU_CUSTOMSCHURAHATFACTORY_DEF_HPP_
+#define MUELU_CUSTOMSCHURAHATFACTORY_DEF_HPP_
 
 #include <Xpetra_BlockedCrsMatrix.hpp>
 #include <Xpetra_MultiVectorFactory.hpp>
@@ -59,17 +59,9 @@
 #include "MueLu_Monitor.hpp"
 #include "MueLu_Utilities.hpp"
 
-#include "MueLu_CustomSchurAhatFactory_decl.hpp"
+#include "MueLu_CustomSchurAhatFactory.hpp"
 
 namespace MueLu {
-
-template <class Scalar, class LocalOrdinal, class GlobalOrdinal, class Node>
-CustomSchurAhatFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::CustomSchurAhatFactory() 
-{ }
-
-template <class Scalar, class LocalOrdinal, class GlobalOrdinal, class Node>
-CustomSchurAhatFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::~CustomSchurAhatFactory() 
-{ }
 
 template <class Scalar, class LocalOrdinal, class GlobalOrdinal, class Node>
 RCP<const ParameterList> CustomSchurAhatFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::GetValidParameterList() const {
@@ -120,4 +112,4 @@ void CustomSchurAhatFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Build(Le
 
 } // namespace MueLu
 
-#endif /* MUELU_CUSTOMSCHURAHATFACTORY_DEF_HPP */
+#endif /* MUELU_CUSTOMSCHURAHATFACTORY_DEF_HPP_ */
