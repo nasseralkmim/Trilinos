@@ -79,7 +79,7 @@ namespace MueLu {
 
   template <class Scalar,class LocalOrdinal, class GlobalOrdinal, class Node>
   ModBlockedGaussSeidelSmoother<Scalar, LocalOrdinal, GlobalOrdinal, Node>::ModBlockedGaussSeidelSmoother()
-    : type_("modified blocked GaussSeidel"), A_(Teuchos::null)
+    : type_("modified blocked GaussSeidel"), A_(Teuchos::null), AhatSmoother_(Teuchos::null), AhatFactoryManager_(Teuchos::null)
   {
     FactManager_.reserve(10); // TODO fix me!
   }
@@ -103,6 +103,11 @@ namespace MueLu {
     validParamList->set<bool>("UseSIMPLEUL-v2", false, "Use SIMPLE to correct damage field (default = false)");
 
     return validParamList;
+  }
+
+  template <class Scalar,class LocalOrdinal, class GlobalOrdinal, class Node>
+  void ModBlockedGaussSeidelSmoother<Scalar, LocalOrdinal, GlobalOrdinal, Node>::SetAhatFactoryManager(RCP<const FactoryManagerBase> FactManager) {
+    AhatFactoryManager_ = FactManager;
   }
 
   template <class Scalar,class LocalOrdinal, class GlobalOrdinal, class Node>
@@ -145,6 +150,12 @@ namespace MueLu {
 
       // request "A" for current subblock row (only needed for Thyra mode)
       currentLevel.DeclareInput("A",(*it)->GetFactory("A").get());
+    }
+
+    if (!AhatFactoryManager_.is_null()) {
+      SetFactoryManager currentSFM(rcpFromRef(currentLevel), AhatFactoryManager_);
+      currentLevel.DeclareInput("PreSmoother", AhatFactoryManager_->GetFactory("Smoother").get());
+      currentLevel.DeclareInput("A", AhatFactoryManager_->GetFactory("A").get());
     }
   }
 
