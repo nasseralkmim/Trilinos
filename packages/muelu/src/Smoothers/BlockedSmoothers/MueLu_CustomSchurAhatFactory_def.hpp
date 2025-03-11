@@ -118,11 +118,6 @@ void CustomSchurAhatFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Build(Le
   Set(currentLevel, "A", Ahat);
 }
 
-template <class Scalar, class LocalOrdinal, class GlobalOrdinal, class Node>
-std::string CustomSchurAhatFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::description() const {
-  return "CustomSchurAhatFactory";
-}
-
 } // namespace MueLu
 
 #endif /* MUELU_CUSTOMSCHURAHATFACTORY_DEF_HPP */
