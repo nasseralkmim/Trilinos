@@ -92,7 +92,7 @@ public:
     std::string description() const;
 
     //! Print information about this object to out
-    void print(Teuchos::FancyOStream &out, const VerbLevel verbLevel = VerbLevel::Debug) const;
+    void print(Teuchos::FancyOStream &out, const VerbLevel verbLevel = Default) const;
 
     //! Return estimate of smoother complexity per node
     size_t getNodeSmootherComplexity() const;
