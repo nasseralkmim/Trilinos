@@ -78,7 +78,7 @@ namespace MueLu {
 
   template <class Scalar,class LocalOrdinal, class GlobalOrdinal, class Node>
   ModBlockedGaussSeidelSmoother<Scalar, LocalOrdinal, GlobalOrdinal, Node>::ModBlockedGaussSeidelSmoother()
-    : type_("modified blocked GaussSeidel"), A_(Teuchos::null), AhatSmoother_(Teuchos::null), AhatFactoryManager_(Teuchos::null)
+    : type_("modified blocked GaussSeidel"), A_(Teuchos::null)
   {
     FactManager_.reserve(10); // TODO fix me!
   }
@@ -151,7 +151,8 @@ namespace MueLu {
       currentLevel.DeclareInput("A",(*it)->GetFactory("A").get());
     }
 
-    if (!AhatFactoryManager_.is_null()) {
++   const ParameterList & pL = Factory::GetParameterList();
++   if (pL.get<bool>("UseSIMPLEUL-v2")) {
       SetFactoryManager currentSFM(rcpFromRef(currentLevel), AhatFactoryManager_);
       currentLevel.DeclareInput("PreSmoother", AhatFactoryManager_->GetFactory("Smoother").get());
       currentLevel.DeclareInput("A", AhatFactoryManager_->GetFactory("A").get());
@@ -162,7 +163,6 @@ namespace MueLu {
   void ModBlockedGaussSeidelSmoother<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Setup(Level &currentLevel) {
 
     RCP<Teuchos::FancyOStream> out = Teuchos::fancyOStream(Teuchos::rcpFromRef(std::cout));
-
     FactoryMonitor m(*this, "Setup blocked Gauss-Seidel Smoother", currentLevel);
     if (SmootherPrototype::IsSetup() == true) this->GetOStream(Warnings0) << "MueLu::ModBlockedGaussSeidelSmoother::Setup(): Setup() has already been called";
 
