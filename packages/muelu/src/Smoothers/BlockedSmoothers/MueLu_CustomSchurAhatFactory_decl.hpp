@@ -79,8 +79,6 @@ public:
   void DeclareInput(Level& currentLevel) const;
   void Build(Level& currentLevel) const;
   
-  std::string description() const override;
-  void print(Teuchos::FancyOStream &out, const MueLu::VerbLevel verbLevel = MueLu::VerbLevel::Default) const override;
 };
 
 } // namespace MueLu

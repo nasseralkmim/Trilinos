@@ -110,12 +110,6 @@ std::string CustomSchurAhatFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::d
   return "CustomSchurAhatFactory";
 }
 
-template <class Scalar, class LocalOrdinal, class GlobalOrdinal, class Node>
-void CustomSchurAhatFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::print(Teuchos::FancyOStream &out, const MueLu::VerbLevel verbLevel) const {
-  MUELU_DESCRIBE;
-  out0 << description() << std::endl;
-}
-
 } // namespace MueLu
 
 #endif /* MUELU_CUSTOMSCHURAHATFACTORY_DEF_HPP */
