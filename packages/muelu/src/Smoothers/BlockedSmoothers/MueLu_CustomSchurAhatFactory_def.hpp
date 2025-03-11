@@ -46,6 +46,19 @@
 #ifndef MUELU_CUSTOMSCHURAHATFACTORY_DEF_HPP
 #define MUELU_CUSTOMSCHURAHATFACTORY_DEF_HPP
 
+#include <Xpetra_BlockedCrsMatrix.hpp>
+#include <Xpetra_MultiVectorFactory.hpp>
+#include <Xpetra_VectorFactory.hpp>
+#include <Xpetra_MatrixFactory.hpp>
+#include <Xpetra_Matrix.hpp>
+#include <Xpetra_MatrixMatrix.hpp>
+#include <Xpetra_CrsMatrixWrap.hpp>
+#include <Xpetra_BlockedCrsMatrix.hpp>
+#include <Xpetra_CrsMatrix.hpp>
+#include "MueLu_Level.hpp"
+#include "MueLu_Monitor.hpp"
+#include "MueLu_Utilities.hpp"
+
 #include "MueLu_CustomSchurAhatFactory_decl.hpp"
 
 namespace MueLu {
@@ -67,7 +80,7 @@ RCP<const ParameterList> CustomSchurAhatFactory<Scalar, LocalOrdinal, GlobalOrdi
 
 template <class Scalar, class LocalOrdinal, class GlobalOrdinal, class Node>
 void CustomSchurAhatFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::DeclareInput(Level& currentLevel) const {
-  FactoryBase::Input(currentLevel, "A");
+  Input(currentLevel, "A");
 }
 
 template <class Scalar, class LocalOrdinal, class GlobalOrdinal, class Node>
