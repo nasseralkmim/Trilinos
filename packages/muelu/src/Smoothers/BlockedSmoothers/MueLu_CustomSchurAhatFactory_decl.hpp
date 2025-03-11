@@ -118,6 +118,11 @@ public:
     // Store result
     Set(currentLevel, "A", Ahat);
   }
+
+  std::string description() const override { return "CustomSchurAhatFactory"; }
+  void print(Teuchos::FancyOStream &out, const VerbLevel verbLevel) const override {
+    out << description() << std::endl;
+  }
 };
 
 } // namespace MueLu
