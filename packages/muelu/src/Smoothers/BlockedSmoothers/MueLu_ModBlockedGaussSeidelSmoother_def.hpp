@@ -241,7 +241,7 @@ namespace MueLu {
         
         // extract Smoother for current block row (BGS ordering)
         RCP<const SmootherBase> Smoo = currentLevel.Get< RCP<SmootherBase> >("PreSmoother",(*it)->GetFactory("Smoother").get());
-        //Inverse_.push_back(Smoo); // original line
+        Inverse_.push_back(Smoo);
 
       }
     }
