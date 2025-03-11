@@ -247,7 +247,7 @@ namespace MueLu {
       // Create and set up AhatFactoryManager when SIMPLEUL-v2 is enabled
       RCP<FactoryManager> AhatFM = rcp(new FactoryManager());
       
-      // Create and configure Ahat factory
+      // Create and configure Ahat factory that computes Ahat = A11 - C1 * (1/diag(H)) * C2
       RCP<CustomSchurAhatFactory<Scalar,LocalOrdinal,GlobalOrdinal,Node> > AhatFactory = 
           rcp(new CustomSchurAhatFactory<Scalar,LocalOrdinal,GlobalOrdinal,Node>());
       
@@ -266,7 +266,7 @@ namespace MueLu {
       // Set the factory manager
       SetAhatFactoryManager(AhatFM);
 
-      // Set up Ahat smoother
+      // Set up Ahat smoother that approximated Ahat^{-1}
       SetFactoryManager currentSFM(rcpFromRef(currentLevel), AhatFactoryManager_);
       AhatSmoother_ = currentLevel.Get< RCP<SmootherBase> >("PreSmoother",
                                                            AhatFactoryManager_->GetFactory("Smoother").get());
