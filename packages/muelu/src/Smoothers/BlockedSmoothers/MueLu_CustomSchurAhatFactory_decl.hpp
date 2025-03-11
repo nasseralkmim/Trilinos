@@ -82,13 +82,13 @@ public:
   }
 
   void DeclareInput(Level& currentLevel) const {
-    Input(currentLevel, "A");
+    currentLevel.DeclareInput("A",this->GetFactory("A").get());
   }
 
   void Build(Level& currentLevel) const {
     FactoryMonitor m(*this, "Computing Ahat matrix", currentLevel);
     
-    RCP<Matrix> A = Get< RCP<Matrix> >(currentLevel, "A");
+    RCP<Matrix> A = Factory::Get< RCP<Matrix> >(currentLevel, "A");
     RCP<BlockedCrsMatrix> bA = rcp_dynamic_cast<BlockedCrsMatrix>(A);
     TEUCHOS_TEST_FOR_EXCEPTION(bA.is_null(), Exceptions::BadCast,
                              "Input matrix A must be a BlockedCrsMatrix");
