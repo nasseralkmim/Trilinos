@@ -46,10 +46,21 @@
 #ifndef MUELU_CUSTOMSCHURAHATFACTORY_DECL_HPP
 #define MUELU_CUSTOMSCHURAHATFACTORY_DECL_HPP
 
+#include <Xpetra_BlockedCrsMatrix.hpp>
+#include <Xpetra_MultiVectorFactory.hpp>
+#include <Xpetra_VectorFactory.hpp>
+#include <Xpetra_MatrixFactory.hpp>
+#include <Xpetra_Matrix.hpp>
+#include <Xpetra_MatrixMatrix.hpp>
+#include <Xpetra_CrsMatrixWrap.hpp>
+#include <Xpetra_BlockedCrsMatrix.hpp>
+#include <Xpetra_CrsMatrix.hpp>
+
 #include "MueLu_ConfigDefs.hpp"
 #include "MueLu_FactoryBase.hpp"
 #include "MueLu_Level.hpp"
 #include "MueLu_Utilities.hpp"
+#include "MueLu_Monitor.hpp"
 
 namespace MueLu {
 
@@ -58,8 +69,8 @@ template <class Scalar = double,
           class GlobalOrdinal = LocalOrdinal, 
           class Node = KokkosClassic::DefaultNode::DefaultNodeType>
 class CustomSchurAhatFactory : public FactoryBase {
+#include "MueLu_UseShortNames.hpp"
 public:
-  typedef Matrix matrix_type;
 
   CustomSchurAhatFactory() { }
   virtual ~CustomSchurAhatFactory() { }
