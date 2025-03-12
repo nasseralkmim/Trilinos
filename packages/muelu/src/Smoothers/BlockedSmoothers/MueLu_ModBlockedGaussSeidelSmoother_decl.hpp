@@ -101,7 +101,7 @@ public:
     void Apply(MultiVector& X, const MultiVector& B, bool InitialGuessIsZero = false) const;
 
     // //! Return a smoother copy
-    // RCP< SmootherPrototype<Scalar, LocalOrdinal, GlobalOrdinal, Node> > Copy() const;
+    RCP<SmootherPrototype> Copy() const;
 
     //! Returns a string describing the object
     std::string description() const;

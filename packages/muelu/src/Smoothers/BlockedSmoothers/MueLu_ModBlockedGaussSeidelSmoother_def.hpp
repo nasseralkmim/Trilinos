@@ -865,10 +865,10 @@ namespace MueLu {
     }
   }
 
-  // template <class Scalar,class LocalOrdinal, class GlobalOrdinal, class Node>
-  // RCP<MueLu::SmootherPrototype<Scalar, LocalOrdinal, GlobalOrdinal, Node> > ModBlockedGaussSeidelSmoother<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Copy() const {
-  //   return rcp( new ModBlockedGaussSeidelSmoother(*this) );
-  // }
+  template <class Scalar,class LocalOrdinal, class GlobalOrdinal, class Node>
+  RCP<MueLu::SmootherPrototype<Scalar, LocalOrdinal, GlobalOrdinal, Node> > ModBlockedGaussSeidelSmoother<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Copy() const {
+    return rcp( new ModBlockedGaussSeidelSmoother(*this) );
+  }
 
   template <class Scalar,class LocalOrdinal, class GlobalOrdinal, class Node>
   std::string ModBlockedGaussSeidelSmoother<Scalar, LocalOrdinal, GlobalOrdinal, Node>::description() const {
