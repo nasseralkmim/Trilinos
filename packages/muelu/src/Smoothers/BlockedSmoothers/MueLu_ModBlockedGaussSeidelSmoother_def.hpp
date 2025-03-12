@@ -410,7 +410,118 @@ namespace MueLu {
       // Decide if use SIMPLE with Upper triangular or usual lower triangualr block Gauss-Seidel with or without simple
       bool useSIMPLEUL = pL.get<bool>("UseSIMPLEUL");
       bool useSIMPLEUL_v2 = pL.get<bool>("UseSIMPLEUL-v2");
-      if (useSIMPLEUL || useSIMPLEUL_v2) {
+      if (useSIMPLEUL) {
+        
+        RCP<MultiVector> residual = MultiVectorFactory::Build(rcpB->getMap(), rcpB->getNumVectors());
+        RCP<BlockedMultiVector> bresidual = Teuchos::rcp_dynamic_cast<BlockedMultiVector>(residual);
+        RCP<MultiVector> r1 = bresidual->getMultiVector(0,bRangeThyraMode);
+        RCP<MultiVector> r2 = bresidual->getMultiVector(1,bRangeThyraMode);
+        RCP<MultiVector> r3 = bresidual->getMultiVector(2,bRangeThyraMode);
+
+        // helper vector 1 (preliminary, intermediary calculation)
+        RCP<MultiVector> x_p = MultiVectorFactory::Build(rcpX->getMap(), rcpX->getNumVectors());
+        RCP<BlockedMultiVector> bx_p = Teuchos::rcp_dynamic_cast<BlockedMultiVector>(x_p);
+        RCP<MultiVector> x_p1 = bx_p->getMultiVector(0, bDomainThyraMode);
+        RCP<MultiVector> x_p2 = bx_p->getMultiVector(1, bDomainThyraMode);
+        RCP<MultiVector> x_p3 = bx_p->getMultiVector(2, bDomainThyraMode);
+
+        // helper vector 2
+        RCP<MultiVector> xhat = MultiVectorFactory::Build(rcpX->getMap(), rcpX->getNumVectors());
+        RCP<BlockedMultiVector> bxhat = Teuchos::rcp_dynamic_cast<BlockedMultiVector>(xhat);
+        RCP<MultiVector> xhat1 = bxhat->getMultiVector(0, bDomainThyraMode);
+        RCP<MultiVector> xhat2 = bxhat->getMultiVector(1, bDomainThyraMode);
+        RCP<MultiVector> xhat3 = bxhat->getMultiVector(2, bDomainThyraMode);
+
+        RCP<MultiVector> tempres = MultiVectorFactory::Build(rcpB->getMap(), rcpB->getNumVectors());
+
+        // Clear solution from previos V cycles in case it is still stored
+        if( InitialGuessIsZero==true )
+          rcpX->putScalar(Teuchos::ScalarTraits<Scalar>::zero());
+
+        // incrementally improve solution vector X
+        for (LocalOrdinal run = 0; run < nSweeps; ++run) {
+          // calculate current residual = B - A rcpX
+          residual->update(one, *rcpB, zero); // residual = B
+          if(InitialGuessIsZero == false || run > 0)
+            A_->apply(*rcpX, *residual, Teuchos::NO_TRANS, -one, one);
+
+          if (useSIMPLEUL_v2) {
+            *out << "Using AhatSmoother_->Apply()..." << std::endl;
+          }
+
+          // start from 0 
+          x_p1->putScalar(zero);
+          x_p2->putScalar(zero);
+          x_p3->putScalar(zero);
+
+          // FIRST step, apply the preconditioner to the damage field
+          Inverse_.at(2)->Apply(*x_p3, *r3);
+
+          // Compute the RHS for displacement and microrotation fields
+          RCP<MultiVector> displ_RHS = rangeMapExtractor_->getVector(0, rcpB->getNumVectors(), bRangeThyraMode);
+          RCP<MultiVector> microrotation_RHS =
+            rangeMapExtractor_->getVector(1, rcpB->getNumVectors(), bRangeThyraMode);
+          
+          RCP<Matrix> C1 = bA->getMatrix(0, 2);
+          C1->apply(*x_p3, *displ_RHS);
+          displ_RHS->update(one, *r1, -one);
+          
+          RCP<Matrix> F1 = bA->getMatrix(1, 2);
+          F1->apply(*x_p3, *microrotation_RHS);
+          microrotation_RHS->update(one, *r2, -one);
+
+          // Solve the intermediate problem for the displacement field and microrotation
+          // TODO: this is a temporary solution, we need to implement a smoother for the Schur complement.
+          // NOTE: using the smoother for A^{-1} instead of a smoother for the Schur
+          // complement (A - C1 H^{-1} C2)^{-1}.
+          Inverse_.at(0)->Apply(*x_p1, *displ_RHS);
+
+          RCP<Matrix> B2 = bA->getMatrix(1, 0);
+          RCP<Matrix> C2 = bA->getMatrix(1, 2);
+
+          // Build Schur complement for block B2: Schur_B2 = B2 - F1 diagAinvVector[2] C2
+          RCP<Matrix> Hinv_C2 = MatrixFactory::BuildCopy(C2, false);
+          Hinv_C2->leftScale(*diagAInvVector_[2]);
+          RCP<Matrix> F1_Hinv_C2 = MatrixFactory::BuildCopy(B2, false);
+          Xpetra::MatrixMatrix<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Multiply(*F1, false, *Hinv_C2, false, *F1_Hinv_C2, true, true);
+          RCP<Matrix> Schur_B2 = MatrixFactory::BuildCopy(B2, false);
+          Xpetra::MatrixMatrix<Scalar, LocalOrdinal, GlobalOrdinal, Node>::TwoMatrixAdd(*F1_Hinv_C2, false, -one, *B2, false, one, Schur_B2, this->GetOStream(Statistics2));
+
+          // Build a temporary RHS: temp_RHS = microrotation_RHS - Schur_B2 x_p1
+          RCP<MultiVector> temp_RHS = rangeMapExtractor_->getVector(1, rcpB->getNumVectors(), bRangeThyraMode);
+          Schur_B2->apply(*x_p1, *temp_RHS);
+          temp_RHS->update(one, *microrotation_RHS, -one);
+          
+          // TODO: this is a temporary solution, we need to implement a smoother for the Schur complement.
+          // NOTE: using the smoother for D^{-1} instead of a smoother for the Schur
+          // complement (D - F1 H^{-1} F2)^{-1}.
+          Inverse_.at(1)->Apply(*x_p2, *temp_RHS);
+
+          // Store solution
+          xhat1->update(one, *x_p1, zero);
+          xhat2->update(one, *x_p2, zero);
+
+          // Compute correction for damage
+          RCP<MultiVector> Hinv_C2_x_p1 = domainMapExtractor_->getVector(2, rcpX->getNumVectors(), bDomainThyraMode);
+          RCP<MultiVector> Hinv_F2_x_p2 = domainMapExtractor_->getVector(2, rcpX->getNumVectors(), bDomainThyraMode);
+          // Compute Hinv_C2_x_p1 = diagAInvVecto_[2] C2 x_p1
+          C2->apply(*x_p1, *Hinv_C2_x_p1);
+          Hinv_C2_x_p1->elementWiseMultiply(1.0, *diagAInvVector_[2], *Hinv_C2_x_p1, 0.0);
+          // Compute Hinv_F2_x_p2 = diagAInvVector_[2] F2 x_p2
+          F1->apply(*x_p2, *Hinv_F2_x_p2);
+          Hinv_F2_x_p2->elementWiseMultiply(1.0, *diagAInvVector_[2], *Hinv_F2_x_p2, 0.0);
+
+          // Compute the correction for the damage field
+          // xhat3 = x_p3 - Hinv_F2_x_p2 - Hinv_C2_x_p1
+          xhat3->update(one, *x_p3, zero);
+          xhat3->update(-one, *Hinv_F2_x_p2, one);
+          xhat3->update(-one, *Hinv_C2_x_p1, one);
+          
+          // 7. Update solution vector
+          rcpX->update(one, *bxhat, one); // x^{k+1} = x^{k} + xhat
+        }
+      
+      } else if (useSIMPLEUL_v2) {
         
         RCP<MultiVector> residual = MultiVectorFactory::Build(rcpB->getMap(), rcpB->getNumVectors());
         RCP<BlockedMultiVector> bresidual = Teuchos::rcp_dynamic_cast<BlockedMultiVector>(residual);
