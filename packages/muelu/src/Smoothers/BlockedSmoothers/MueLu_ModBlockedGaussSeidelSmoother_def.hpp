@@ -158,6 +158,7 @@ namespace MueLu {
   void ModBlockedGaussSeidelSmoother<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Setup(Level &currentLevel) {
 
     RCP<Teuchos::FancyOStream> out = Teuchos::fancyOStream(Teuchos::rcpFromRef(std::cout));
+    out->setOutputToRootOnly(0);
     FactoryMonitor m(*this, "Setup blocked Gauss-Seidel Smoother", currentLevel);
     if (SmootherPrototype::IsSetup() == true) this->GetOStream(Warnings0) << "MueLu::ModBlockedGaussSeidelSmoother::Setup(): Setup() has already been called";
 
@@ -222,32 +223,25 @@ namespace MueLu {
     }
     bool useSIMPLEUL_v2 = pL.get<bool>("UseSIMPLEUL-v2");
     if (useSIMPLEUL_v2) {
+      
       *out << "Using modBGS with SIMPLEUL-V2-like algorithm for: " << blockSize_ << " blocks"  << std::endl;
-      for (int i = 0; i < blockSize_; i++) {
-        Teuchos::RCP<Vector> AiiDiag = VectorFactory::Build(bA->getMatrix(i, i)->getRowMap());
-        bA->getMatrix(i, i)->getLocalDiagCopy(*AiiDiag);
-        diagAInvVector_[i] = Utilities::GetInverse(AiiDiag);
-      }
-      for(it = FactManager_.begin(); it!=FactManager_.end(); ++it) {
-        SetFactoryManager currentSFM(rcpFromRef(currentLevel), *it);
-
-        RCP<Matrix> originalA = currentLevel.Get< RCP<Matrix> >("A",(*it)->GetFactory("A").get());
-        
-        // extract Smoother for current block row (BGS ordering)
-        RCP<const SmootherBase> Smoo = currentLevel.Get< RCP<SmootherBase> >("PreSmoother",(*it)->GetFactory("Smoother").get());
-        Inverse_.push_back(Smoo);
-      }
 
       // Create and set up AhatFactoryManager when SIMPLEUL-v2 is enabled
       RCP<FactoryManager<Scalar,LocalOrdinal,GlobalOrdinal,Node> > AhatFM = 
           rcp(new FactoryManager<Scalar,LocalOrdinal,GlobalOrdinal,Node>());
       
+      *out << "Created AhatFM"  << std::endl;
+      
       // Create and configure Ahat factory that computes Ahat = A11 - C1 * (1/diag(H)) * C2
       RCP<CustomSchurAhatFactory<Scalar,LocalOrdinal,GlobalOrdinal,Node> > AhatFactory = 
           rcp(new CustomSchurAhatFactory<Scalar,LocalOrdinal,GlobalOrdinal,Node>());
+      
+      *out << "Created AhatFactory" << std::endl;
 
       // Set the input factory for matrix A (blocked matrix that will be used to build Ahat)
       AhatFactory->SetFactory("A", this->GetFactory("A"));
+      
+      *out << "Set the blocked matrix as A to produce Ahat" << std::endl;
 
       // Create smoother factory for Ahat (approximates Ahat inverse)
       // Using same smoother type as the first block
@@ -257,6 +251,8 @@ namespace MueLu {
       // Configure factory manager
       AhatFM->SetFactory("A", AhatFactory);
       AhatFM->SetFactory("Smoother", AhatSmootherFactory);
+      
+      *out << "Configure AhatFM" << std::endl;
 
       // Set the factory manager
       SetAhatFactoryManager(AhatFM);
