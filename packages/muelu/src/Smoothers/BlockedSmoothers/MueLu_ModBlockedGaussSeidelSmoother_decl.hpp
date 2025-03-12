@@ -119,6 +119,9 @@ public:
 
     /*! \brief Set FactoryManager for Ahat smoother */
     void SetAhatFactoryManager(RCP<const FactoryManagerBase> FactManager);
+    
+    /*! \brief Set FactoryManager for Dhat smoother */
+    void SetDhatFactoryManager(RCP<const FactoryManagerBase> FactManager);
 
     /*! \brief Add FactoryManager for subblocks of blocked operator A */
     void AddFactoryManager(RCP<const FactoryManagerBase> FactManager, int pos);
@@ -145,6 +148,8 @@ public:
 
     RCP<const SmootherBase> AhatSmoother_;
     RCP<const FactoryManagerBase> AhatFactoryManager_;
+    RCP<const SmootherBase> DhatSmoother_;
+    RCP<const FactoryManagerBase> DhatFactoryManager_;
 
     RCP<const MapExtractor> rangeMapExtractor_;
     RCP<const MapExtractor> domainMapExtractor_;

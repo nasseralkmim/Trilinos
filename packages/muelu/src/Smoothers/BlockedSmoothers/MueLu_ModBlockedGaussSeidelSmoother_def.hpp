@@ -75,6 +75,7 @@
 #include "MueLu_FactoryManager.hpp"
 
 #include "MueLu_CustomSchurAhatFactory.hpp"
+#include "MueLu_CustomSchurDhatFactory.hpp"
 
 namespace MueLu {
 
@@ -102,6 +103,7 @@ namespace MueLu {
     validParamList->set<bool>("UseDiagInverse", false, "Use diagonal inverse in the SIMPLE (default = false)");
     validParamList->set<bool>("UseSIMPLEUL", false, "Use SIMPLE to correct damage field (default = false)");
     validParamList->set<bool>("UseSIMPLEUL-v2", false, "Use SIMPLE to correct damage field (default = false)");
+    validParamList->set<bool>("UseSIMPLEUL-v3", false, "Use SIMPLE to correct damage field (default = false)");
 
     return validParamList;
   }
@@ -109,6 +111,11 @@ namespace MueLu {
   template <class Scalar,class LocalOrdinal, class GlobalOrdinal, class Node>
   void ModBlockedGaussSeidelSmoother<Scalar, LocalOrdinal, GlobalOrdinal, Node>::SetAhatFactoryManager(RCP<const FactoryManagerBase> FactManager) {
     AhatFactoryManager_ = FactManager;
+  }
+
+  template <class Scalar,class LocalOrdinal, class GlobalOrdinal, class Node>
+  void ModBlockedGaussSeidelSmoother<Scalar, LocalOrdinal, GlobalOrdinal, Node>::SetDhatFactoryManager(RCP<const FactoryManagerBase> FactManager) {
+    DhatFactoryManager_ = FactManager;
   }
 
   template <class Scalar,class LocalOrdinal, class GlobalOrdinal, class Node>
@@ -262,6 +269,79 @@ namespace MueLu {
       AhatSmoother_ = currentLevel.Get< RCP<SmootherBase> >("PreSmoother",
                                                            AhatFactoryManager_->GetFactory("Smoother").get());
     }
+    bool useSIMPLEUL_v3 = pL.get<bool>("UseSIMPLEUL-v3");
+    if (useSIMPLEUL_v3) {
+      
+      *out << "Using modBGS with SIMPLEUL-V3-like algorithm for: " << blockSize_ << " blocks"  << std::endl;
+      
+      for (int i = 0; i < blockSize_; i++) {
+        Teuchos::RCP<Vector> AiiDiag = VectorFactory::Build(bA->getMatrix(i, i)->getRowMap());
+        bA->getMatrix(i, i)->getLocalDiagCopy(*AiiDiag);
+        diagAInvVector_[i] = Utilities::GetInverse(AiiDiag);
+      }
+
+      // Create and set up AhatFactoryManager when SIMPLEUL-v2 is enabled
+      RCP<FactoryManager<Scalar,LocalOrdinal,GlobalOrdinal,Node> > AhatFM = 
+          rcp(new FactoryManager<Scalar,LocalOrdinal,GlobalOrdinal,Node>());
+      
+      // Create and configure Ahat factory that computes Ahat = A11 - C1 * (1/diag(H)) * C2
+      RCP<CustomSchurAhatFactory<Scalar,LocalOrdinal,GlobalOrdinal,Node> > AhatFactory = 
+          rcp(new CustomSchurAhatFactory<Scalar,LocalOrdinal,GlobalOrdinal,Node>());
+      
+      // Set the input factory for matrix A (blocked matrix that will be used to build Ahat)
+      AhatFactory->SetFactory("A", this->GetFactory("A"));
+      
+      // Create smoother factory for Ahat (approximates Ahat inverse)
+      // Using same smoother type as the first block
+      RCP<const FactoryManagerBase> firstBlockFM = FactManager_.at(0);
+      RCP<const FactoryBase> AhatSmootherFactory = firstBlockFM->GetFactory("Smoother");
+      
+      // Configure factory manager
+      AhatFM->SetFactory("A", AhatFactory);
+      AhatFM->SetFactory("Smoother", AhatSmootherFactory);
+      
+      // Set the factory manager
+      SetAhatFactoryManager(AhatFM);
+
+      // Set up Ahat smoother that approximated Ahat^{-1}
+      // Get call will triger the Setup of the smoother (e.g. MueLu_IfpackSmoother) and
+      // this will trigger the Build of AhatFactory
+      SetFactoryManager currentSFM(rcpFromRef(currentLevel), AhatFactoryManager_);
+      AhatSmoother_ = currentLevel.Get< RCP<SmootherBase> >("PreSmoother",
+                                                           AhatFactoryManager_->GetFactory("Smoother").get());
+      
+      // Create and set up AhatFactoryManager when SIMPLEUL-v2 is enabled
+      RCP<FactoryManager<Scalar,LocalOrdinal,GlobalOrdinal,Node> > DhatFM = 
+          rcp(new FactoryManager<Scalar,LocalOrdinal,GlobalOrdinal,Node>());
+      
+      // Create and configure Dhat factory that computes Dhat = A11 - C1 * (1/diag(H)) * C2
+      RCP<CustomSchurDhatFactory<Scalar,LocalOrdinal,GlobalOrdinal,Node> > DhatFactory = 
+          rcp(new CustomSchurDhatFactory<Scalar,LocalOrdinal,GlobalOrdinal,Node>());
+      
+      // Set the input factory for matrix A (blocked matrix that will be used to build Dhat)
+      DhatFactory->SetFactory("A", this->GetFactory("A"));
+      
+      // Create smoother factory for Dhat (approximates Dhat inverse)
+      // Using same smoother type as the first block
+      RCP<const FactoryManagerBase> secondBlockFM = FactManager_.at(1);
+      RCP<const FactoryBase> DhatSmootherFactory = secondBlockFM->GetFactory("Smoother");
+      
+      // Configure factory manager
+      DhatFM->SetFactory("A", DhatFactory);
+      DhatFM->SetFactory("Smoother", DhatSmootherFactory);
+      
+      // Set the factory manager
+      SetDhatFactoryManager(DhatFM);
+
+      // Set up Dhat smoother that approximated Dhat^{-1}
+      // Get call will triger the Setup of the smoother (e.g. MueLu_IfpackSmoother) and
+      // this will trigger the Build of DhatFactory
+      SetFactoryManager currentSFM2(rcpFromRef(currentLevel), DhatFactoryManager_);
+      DhatSmoother_ = currentLevel.Get< RCP<SmootherBase> >("PreSmoother",
+                                                           DhatFactoryManager_->GetFactory("Smoother").get());
+
+    }
+
     // use eigenvalue damping only with "SIMPLE" approaches
     bool useEigenDamping = pL.get<bool>("UseEigenDamping");
     if ((useSIMPLE || useSIMPLEC) && useEigenDamping) {
@@ -410,6 +490,7 @@ namespace MueLu {
       // Decide if use SIMPLE with Upper triangular or usual lower triangualr block Gauss-Seidel with or without simple
       bool useSIMPLEUL = pL.get<bool>("UseSIMPLEUL");
       bool useSIMPLEUL_v2 = pL.get<bool>("UseSIMPLEUL-v2");
+      bool useSIMPLEUL_v3 = pL.get<bool>("UseSIMPLEUL-v3");
       if (useSIMPLEUL) {
         
         RCP<MultiVector> residual = MultiVectorFactory::Build(rcpB->getMap(), rcpB->getNumVectors());
@@ -598,6 +679,109 @@ namespace MueLu {
           // NOTE: using the smoother for D^{-1} instead of a smoother for the Schur
           // complement (D - F1 H^{-1} F2)^{-1}.
           Inverse_.at(1)->Apply(*x_p2, *temp_RHS);
+
+          // Store solution
+          xhat1->update(one, *x_p1, zero);
+          xhat2->update(one, *x_p2, zero);
+
+          // Compute correction for damage
+          RCP<MultiVector> Hinv_C2_x_p1 = domainMapExtractor_->getVector(2, rcpX->getNumVectors(), bDomainThyraMode);
+          RCP<MultiVector> Hinv_F2_x_p2 = domainMapExtractor_->getVector(2, rcpX->getNumVectors(), bDomainThyraMode);
+          // Compute Hinv_C2_x_p1 = diagAInvVecto_[2] C2 x_p1
+          C2->apply(*x_p1, *Hinv_C2_x_p1);
+          Hinv_C2_x_p1->elementWiseMultiply(1.0, *diagAInvVector_[2], *Hinv_C2_x_p1, 0.0);
+          // Compute Hinv_F2_x_p2 = diagAInvVector_[2] F2 x_p2
+          F1->apply(*x_p2, *Hinv_F2_x_p2);
+          Hinv_F2_x_p2->elementWiseMultiply(1.0, *diagAInvVector_[2], *Hinv_F2_x_p2, 0.0);
+
+          // Compute the correction for the damage field
+          // xhat3 = x_p3 - Hinv_F2_x_p2 - Hinv_C2_x_p1
+          xhat3->update(one, *x_p3, zero);
+          xhat3->update(-one, *Hinv_F2_x_p2, one);
+          xhat3->update(-one, *Hinv_C2_x_p1, one);
+          
+          // 7. Update solution vector
+          rcpX->update(one, *bxhat, one); // x^{k+1} = x^{k} + xhat
+        }
+      
+      } else if (useSIMPLEUL_v3) {
+        
+        RCP<MultiVector> residual = MultiVectorFactory::Build(rcpB->getMap(), rcpB->getNumVectors());
+        RCP<BlockedMultiVector> bresidual = Teuchos::rcp_dynamic_cast<BlockedMultiVector>(residual);
+        RCP<MultiVector> r1 = bresidual->getMultiVector(0,bRangeThyraMode);
+        RCP<MultiVector> r2 = bresidual->getMultiVector(1,bRangeThyraMode);
+        RCP<MultiVector> r3 = bresidual->getMultiVector(2,bRangeThyraMode);
+
+        // helper vector 1 (preliminary, intermediary calculation)
+        RCP<MultiVector> x_p = MultiVectorFactory::Build(rcpX->getMap(), rcpX->getNumVectors());
+        RCP<BlockedMultiVector> bx_p = Teuchos::rcp_dynamic_cast<BlockedMultiVector>(x_p);
+        RCP<MultiVector> x_p1 = bx_p->getMultiVector(0, bDomainThyraMode);
+        RCP<MultiVector> x_p2 = bx_p->getMultiVector(1, bDomainThyraMode);
+        RCP<MultiVector> x_p3 = bx_p->getMultiVector(2, bDomainThyraMode);
+
+        // helper vector 2
+        RCP<MultiVector> xhat = MultiVectorFactory::Build(rcpX->getMap(), rcpX->getNumVectors());
+        RCP<BlockedMultiVector> bxhat = Teuchos::rcp_dynamic_cast<BlockedMultiVector>(xhat);
+        RCP<MultiVector> xhat1 = bxhat->getMultiVector(0, bDomainThyraMode);
+        RCP<MultiVector> xhat2 = bxhat->getMultiVector(1, bDomainThyraMode);
+        RCP<MultiVector> xhat3 = bxhat->getMultiVector(2, bDomainThyraMode);
+
+        RCP<MultiVector> tempres = MultiVectorFactory::Build(rcpB->getMap(), rcpB->getNumVectors());
+
+        // Clear solution from previos V cycles in case it is still stored
+        if( InitialGuessIsZero==true )
+          rcpX->putScalar(Teuchos::ScalarTraits<Scalar>::zero());
+    
+        // incrementally improve solution vector X
+        for (LocalOrdinal run = 0; run < nSweeps; ++run) {
+          // calculate current residual = B - A rcpX
+          residual->update(one, *rcpB, zero); // residual = B
+          if(InitialGuessIsZero == false || run > 0)
+            A_->apply(*rcpX, *residual, Teuchos::NO_TRANS, -one, one);
+
+          // start from 0 
+          x_p1->putScalar(zero);
+          x_p2->putScalar(zero);
+          x_p3->putScalar(zero);
+
+          // FIRST step, apply the preconditioner to the damage field
+          Inverse_.at(2)->Apply(*x_p3, *r3);
+
+          // Compute the RHS for displacement and microrotation fields
+          RCP<MultiVector> displ_RHS = rangeMapExtractor_->getVector(0, rcpB->getNumVectors(), bRangeThyraMode);
+          RCP<MultiVector> microrotation_RHS =
+            rangeMapExtractor_->getVector(1, rcpB->getNumVectors(), bRangeThyraMode);
+          
+          RCP<Matrix> C1 = bA->getMatrix(0, 2);
+          C1->apply(*x_p3, *displ_RHS);
+          displ_RHS->update(one, *r1, -one);
+          
+          RCP<Matrix> F1 = bA->getMatrix(1, 2);
+          F1->apply(*x_p3, *microrotation_RHS);
+          microrotation_RHS->update(one, *r2, -one);
+
+          // Solve the intermediate problem for the displacement field and microrotation
+          // AhatSmoother approximates AhatInv with Ahat = (A - C1 diagH^{-1} C2)^{-1}.
+          // The smoother is the same as the one used for the first block
+          AhatSmoother_->Apply(*x_p1, *displ_RHS);
+
+          RCP<Matrix> B2 = bA->getMatrix(1, 0);
+          RCP<Matrix> C2 = bA->getMatrix(1, 2);
+          
+          // Build Schur complement for block B2: Schur_B2 = B2 - F1 diagAinvVector[2] C2
+          RCP<Matrix> Hinv_C2 = MatrixFactory::BuildCopy(C2, false);
+          Hinv_C2->leftScale(*diagAInvVector_[2]);
+          RCP<Matrix> F1_Hinv_C2 = MatrixFactory::BuildCopy(B2, false);
+          Xpetra::MatrixMatrix<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Multiply(*F1, false, *Hinv_C2, false, *F1_Hinv_C2, true, true);
+          RCP<Matrix> Schur_B2 = MatrixFactory::BuildCopy(B2, false);
+          Xpetra::MatrixMatrix<Scalar, LocalOrdinal, GlobalOrdinal, Node>::TwoMatrixAdd(*F1_Hinv_C2, false, -one, *B2, false, one, Schur_B2, this->GetOStream(Statistics2));
+
+          // Build a temporary RHS: temp_RHS = microrotation_RHS - Schur_B2 x_p1
+          RCP<MultiVector> temp_RHS = rangeMapExtractor_->getVector(1, rcpB->getNumVectors(), bRangeThyraMode);
+          Schur_B2->apply(*x_p1, *temp_RHS);
+          temp_RHS->update(one, *microrotation_RHS, -one);
+          
+          DhatSmoother_->Apply(*x_p2, *temp_RHS);
 
           // Store solution
           xhat1->update(one, *x_p1, zero);
