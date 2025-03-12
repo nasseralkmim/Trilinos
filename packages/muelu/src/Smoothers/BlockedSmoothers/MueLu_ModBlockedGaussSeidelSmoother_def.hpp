@@ -445,10 +445,6 @@ namespace MueLu {
           if(InitialGuessIsZero == false || run > 0)
             A_->apply(*rcpX, *residual, Teuchos::NO_TRANS, -one, one);
 
-          if (useSIMPLEUL_v2) {
-            *out << "Using AhatSmoother_->Apply()..." << std::endl;
-          }
-
           // start from 0 
           x_p1->putScalar(zero);
           x_p2->putScalar(zero);
@@ -578,10 +574,9 @@ namespace MueLu {
           microrotation_RHS->update(one, *r2, -one);
 
           // Solve the intermediate problem for the displacement field and microrotation
-          // TODO: this is a temporary solution, we need to implement a smoother for the Schur complement.
-          // NOTE: using the smoother for A^{-1} instead of a smoother for the Schur
-          // complement (A - C1 H^{-1} C2)^{-1}.
-          Inverse_.at(0)->Apply(*x_p1, *displ_RHS);
+          // AhatSmoother approximates AhatInv with Ahat = (A - C1 diagH^{-1} C2)^{-1}.
+          // The smoother is the same as the one used for the first block
+          AhatSmoother_->Apply(*x_p1, *displ_RHS);
 
           RCP<Matrix> B2 = bA->getMatrix(1, 0);
           RCP<Matrix> C2 = bA->getMatrix(1, 2);
