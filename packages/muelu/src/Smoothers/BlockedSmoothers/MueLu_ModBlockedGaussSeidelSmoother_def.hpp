@@ -230,19 +230,13 @@ namespace MueLu {
       RCP<FactoryManager<Scalar,LocalOrdinal,GlobalOrdinal,Node> > AhatFM = 
           rcp(new FactoryManager<Scalar,LocalOrdinal,GlobalOrdinal,Node>());
       
-      *out << "Created AhatFM"  << std::endl;
-      
       // Create and configure Ahat factory that computes Ahat = A11 - C1 * (1/diag(H)) * C2
       RCP<CustomSchurAhatFactory<Scalar,LocalOrdinal,GlobalOrdinal,Node> > AhatFactory = 
           rcp(new CustomSchurAhatFactory<Scalar,LocalOrdinal,GlobalOrdinal,Node>());
       
-      *out << "Created AhatFactory" << std::endl;
-
       // Set the input factory for matrix A (blocked matrix that will be used to build Ahat)
       AhatFactory->SetFactory("A", this->GetFactory("A"));
       
-      *out << "Set the blocked matrix as A to produce Ahat" << std::endl;
-
       // Create smoother factory for Ahat (approximates Ahat inverse)
       // Using same smoother type as the first block
       RCP<const FactoryManagerBase> firstBlockFM = FactManager_.at(0);
@@ -252,8 +246,6 @@ namespace MueLu {
       AhatFM->SetFactory("A", AhatFactory);
       AhatFM->SetFactory("Smoother", AhatSmootherFactory);
       
-      *out << "Configure AhatFM" << std::endl;
-
       // Set the factory manager
       SetAhatFactoryManager(AhatFM);
 
