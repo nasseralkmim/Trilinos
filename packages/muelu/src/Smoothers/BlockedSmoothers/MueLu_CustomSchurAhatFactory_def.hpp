@@ -104,7 +104,7 @@ void CustomSchurAhatFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Build(Le
 
   // Compute Ahat = A11 - C1 * (1/diag(H)) * C2
   RCP<Matrix> Ahat = MatrixFactory::BuildCopy(A11);
-  Xpetra::MatrixMatrix<Scalar, LocalOrdinal, GlobalOrdinal, Node>::TwoMatrixAdd(*C1HinvC2, false, -1.0, *A11, false, 1.0, Ahat, GetOStream(Statistics2));
+  Xpetra::MatrixMatrix<Scalar, LocalOrdinal, GlobalOrdinal, Node>::TwoMatrixAdd(*C1HinvC2, false, -1.0, Ahat, 1);
 
   // Store result
   Set(currentLevel, "A", Ahat);

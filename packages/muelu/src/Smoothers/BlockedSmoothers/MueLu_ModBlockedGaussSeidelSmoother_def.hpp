@@ -152,13 +152,6 @@ namespace MueLu {
       // request "A" for current subblock row (only needed for Thyra mode)
       currentLevel.DeclareInput("A",(*it)->GetFactory("A").get());
     }
-
-   const ParameterList & pL = Factory::GetParameterList();
-   if (pL.get<bool>("UseSIMPLEUL-v2")) {
-      SetFactoryManager currentSFM(rcpFromRef(currentLevel), AhatFactoryManager_);
-      currentLevel.DeclareInput("PreSmoother", AhatFactoryManager_->GetFactory("Smoother").get());
-      currentLevel.DeclareInput("A", AhatFactoryManager_->GetFactory("A").get());
-    }
   }
 
   template <class Scalar,class LocalOrdinal, class GlobalOrdinal, class Node>
@@ -252,11 +245,11 @@ namespace MueLu {
       // Create and configure Ahat factory that computes Ahat = A11 - C1 * (1/diag(H)) * C2
       RCP<CustomSchurAhatFactory<Scalar,LocalOrdinal,GlobalOrdinal,Node> > AhatFactory = 
           rcp(new CustomSchurAhatFactory<Scalar,LocalOrdinal,GlobalOrdinal,Node>());
-      
-      // Set the input factory for matrix A
+
+      // Set the input factory for matrix A (blocked matrix that will be used to build Ahat)
       AhatFactory->SetFactory("A", this->GetFactory("A"));
 
-      // Create smoother factory for Ahat
+      // Create smoother factory for Ahat (approximates Ahat inverse)
       // Using same smoother type as the first block
       RCP<const FactoryManagerBase> firstBlockFM = FactManager_.at(0);
       RCP<const FactoryBase> AhatSmootherFactory = firstBlockFM->GetFactory("Smoother");
@@ -269,6 +262,8 @@ namespace MueLu {
       SetAhatFactoryManager(AhatFM);
 
       // Set up Ahat smoother that approximated Ahat^{-1}
+      // Get call will triger the Setup of the smoother (e.g. MueLu_IfpackSmoother) and
+      // this will trigger the Build of AhatFactory
       SetFactoryManager currentSFM(rcpFromRef(currentLevel), AhatFactoryManager_);
       AhatSmoother_ = currentLevel.Get< RCP<SmootherBase> >("PreSmoother",
                                                            AhatFactoryManager_->GetFactory("Smoother").get());
