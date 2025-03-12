@@ -75,8 +75,8 @@ class CustomSchurAhatFactory : public SingleLevelFactoryBase {
 #include "MueLu_UseShortNames.hpp"
 public:
 
-  CustomSchurAhatFactory();
-  virtual ~CustomSchurAhatFactory();
+CustomSchurAhatFactory() {}
+virtual ~CustomSchurAhatFactory() {}
 
   RCP<const ParameterList> GetValidParameterList() const;
   void DeclareInput(Level& currentLevel) const;
