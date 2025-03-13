@@ -891,7 +891,11 @@ namespace MueLu {
             }
 
             // first update \Delta \tilde{x}_2 = \Delta \tilde{x}_2 - A22inv F1 \Delta \tilde{x}_3
-            bA->getMatrix(1, 2)->apply(*xhat3, *F1_xtilde3);
+            if (bA->getMatrix(1, 2) != Teuchos::null) {
+              bA->getMatrix(1, 2)->apply(*xtilde2, *B1_xtilde2);
+            } else {
+              F1_xtilde3->putScalar(zero);
+            }
 
             bool useDiagInv = pL.get<bool>("UseDiagInverse");
             if (useDiagInv) {
@@ -903,11 +907,25 @@ namespace MueLu {
               Dinv_F1_xtilde3->elementWiseMultiply(one, *diagAInvVector_[1], *F1_xtilde3, zero);
             }
             xhat2->update(one, *xtilde2, -one);
-        
+
             // use the updated xhat2 to update \Delta \tilde{x}_1
-            bA->getMatrix(0, 1)->apply(*xhat2, *B1_xtilde2);
-            bA->getMatrix(0, 2)->apply(*xhat3, *C1_xtilde3);
-            bA->getMatrix(0, 1)->apply(*Dinv_F1_xtilde3, *B1_Dinv_F1_xtilde3);
+            // On higher levels of the hierarchy B1 or C1 can be null
+            // In the block gauss seidel the same is done: [[file:~/.local/src/Trilinos/packages/xpetra/src/BlockedCrsMatrix/Xpetra_BlockedCrsMatrix.hpp::if (Ablock.is_null())]] 
+            if (bA->getMatrix(0, 1) != Teuchos::null) {
+              bA->getMatrix(0, 1)->apply(*xhat2, *B1_xtilde2);
+            } else {
+              B1_xtilde2->putScalar(zero);
+            }
+            if (bA->getMatrix(0, 2) != Teuchos::null) {
+              bA->getMatrix(0, 2)->apply(*xhat3, *C1_xtilde3);
+            } else {
+              C1_xtilde3->putScalar(zero);
+            }
+            if (bA->getMatrix(0, 1) != Teuchos::null) {
+              bA->getMatrix(0, 1)->apply(*Dinv_F1_xtilde3, *B1_Dinv_F1_xtilde3);
+            } else {
+              B1_Dinv_F1_xtilde3->putScalar(zero);
+            }
 
             // since omega was already applied to \tilde{x}_2, we use 1 here
             if (useDiagInv) {
