@@ -47,10 +47,6 @@
 #ifndef MUELU_MODBLOCKEDGAUSSSEIDELSMOOTHER_DEF_HPP_
 #define MUELU_MODBLOCKEDGAUSSSEIDELSMOOTHER_DEF_HPP_
 
-#include "MueLu_CoupledRBMFactory_decl.hpp"
-#include "Teuchos_ArrayViewDecl.hpp"
-#include "Teuchos_ScalarTraits.hpp"
-
 #include "MueLu_ConfigDefs.hpp"
 
 #include <Xpetra_BlockReorderManager.hpp>
@@ -751,34 +747,51 @@ namespace MueLu {
           RCP<MultiVector> displ_RHS = rangeMapExtractor_->getVector(0, rcpB->getNumVectors(), bRangeThyraMode);
           RCP<MultiVector> microrotation_RHS =
             rangeMapExtractor_->getVector(1, rcpB->getNumVectors(), bRangeThyraMode);
-          
+
           RCP<Matrix> C1 = bA->getMatrix(0, 2);
-          C1->apply(*x_p3, *displ_RHS);
+          if (C1 != Teuchos::null) {
+            C1->apply(*x_p3, *displ_RHS);
+          } else {
+            displ_RHS->putScalar(zero);
+          }
           displ_RHS->update(one, *r1, -one);
           
           RCP<Matrix> F1 = bA->getMatrix(1, 2);
+          if (F1 != Teuchos::null) {
           F1->apply(*x_p3, *microrotation_RHS);
+          } else {
+            microrotation_RHS->putScalar(zero);
+          }
           microrotation_RHS->update(one, *r2, -one);
-
+          
           // Solve the intermediate problem for the displacement field and microrotation
           // AhatSmoother approximates AhatInv with Ahat = (A - C1 diagH^{-1} C2)^{-1}.
           // The smoother is the same as the one used for the first block
           AhatSmoother_->Apply(*x_p1, *displ_RHS);
-
+          
           RCP<Matrix> B2 = bA->getMatrix(1, 0);
           RCP<Matrix> C2 = bA->getMatrix(1, 2);
           
           // Build Schur complement for block B2: Schur_B2 = B2 - F1 diagAinvVector[2] C2
-          RCP<Matrix> Hinv_C2 = MatrixFactory::BuildCopy(C2, false);
-          Hinv_C2->leftScale(*diagAInvVector_[2]);
-          RCP<Matrix> F1_Hinv_C2 = MatrixFactory::BuildCopy(B2, false);
-          Xpetra::MatrixMatrix<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Multiply(*F1, false, *Hinv_C2, false, *F1_Hinv_C2, true, true);
-          RCP<Matrix> Schur_B2 = MatrixFactory::BuildCopy(B2, false);
-          Xpetra::MatrixMatrix<Scalar, LocalOrdinal, GlobalOrdinal, Node>::TwoMatrixAdd(*F1_Hinv_C2, false, -one, *B2, false, one, Schur_B2, this->GetOStream(Statistics2));
-
+          RCP<Matrix> Hinv_C2 = Teuchos::null;
+          RCP<Matrix> F1_Hinv_C2 = Teuchos::null;
+          RCP<Matrix> Schur_B2 = Teuchos::null;
+          if (C2 != Teuchos::null && F1 != Teuchos::null && B2 != Teuchos::null) {
+            Hinv_C2 = MatrixFactory::BuildCopy(C2, false);
+            Hinv_C2->leftScale(*diagAInvVector_[2]);
+            F1_Hinv_C2 = MatrixFactory::BuildCopy(B2, false);
+            Xpetra::MatrixMatrix<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Multiply(*F1, false, *Hinv_C2, false, *F1_Hinv_C2, true, true);
+            Schur_B2 = MatrixFactory::BuildCopy(B2, false);
+            Xpetra::MatrixMatrix<Scalar, LocalOrdinal, GlobalOrdinal, Node>::TwoMatrixAdd(*F1_Hinv_C2, false, -one, *B2, false, one, Schur_B2, this->GetOStream(Statistics2));
+          }
+          
           // Build a temporary RHS: temp_RHS = microrotation_RHS - Schur_B2 x_p1
           RCP<MultiVector> temp_RHS = rangeMapExtractor_->getVector(1, rcpB->getNumVectors(), bRangeThyraMode);
-          Schur_B2->apply(*x_p1, *temp_RHS);
+          if (Schur_B2 != Teuchos::null) {
+            Schur_B2->apply(*x_p1, *temp_RHS);
+          } else {
+            temp_RHS->putScalar(zero);
+          }
           temp_RHS->update(one, *microrotation_RHS, -one);
           
           DhatSmoother_->Apply(*x_p2, *temp_RHS);
@@ -791,11 +804,21 @@ namespace MueLu {
           RCP<MultiVector> Hinv_C2_x_p1 = domainMapExtractor_->getVector(2, rcpX->getNumVectors(), bDomainThyraMode);
           RCP<MultiVector> Hinv_F2_x_p2 = domainMapExtractor_->getVector(2, rcpX->getNumVectors(), bDomainThyraMode);
           // Compute Hinv_C2_x_p1 = diagAInvVecto_[2] C2 x_p1
-          C2->apply(*x_p1, *Hinv_C2_x_p1);
-          Hinv_C2_x_p1->elementWiseMultiply(1.0, *diagAInvVector_[2], *Hinv_C2_x_p1, 0.0);
+          if (C2 != Teuchos::null) {
+            C2->apply(*x_p1, *Hinv_C2_x_p1);
+            Hinv_C2_x_p1->elementWiseMultiply(1.0, *diagAInvVector_[2], *Hinv_C2_x_p1, 0.0);
+          } else {
+            Hinv_C2_x_p1->putScalar(zero);
+          }
+          
+          RCP<Matrix> F2 = bA->getMatrix(2, 1);
           // Compute Hinv_F2_x_p2 = diagAInvVector_[2] F2 x_p2
-          F1->apply(*x_p2, *Hinv_F2_x_p2);
-          Hinv_F2_x_p2->elementWiseMultiply(1.0, *diagAInvVector_[2], *Hinv_F2_x_p2, 0.0);
+          if (F2 != Teuchos::null) {
+            F2->apply(*x_p2, *Hinv_F2_x_p2);
+            Hinv_F2_x_p2->elementWiseMultiply(1.0, *diagAInvVector_[2], *Hinv_F2_x_p2, 0.0);
+          } else {
+            Hinv_F2_x_p2->putScalar(zero);
+          }
 
           // Compute the correction for the damage field
           // xhat3 = x_p3 - Hinv_F2_x_p2 - Hinv_C2_x_p1
