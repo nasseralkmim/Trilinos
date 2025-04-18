@@ -183,6 +183,9 @@ Teuchos::RCP<Intrepid2::Basis<KokkosExecutionSpace, Scalar, Scalar>> BasisFactor
       return rcp(new Intrepid2::Basis_HGRAD_LINE_C1_FEM<KokkosExecutionSpace, Scalar, Scalar>());
     else
       return rcp(new Intrepid2::Basis_HGRAD_LINE_Cn_FEM<KokkosExecutionSpace, Scalar, Scalar>(degree, Intrepid2::POINTTYPE_EQUISPACED));
+  } else if (deriv == "hgrad" && el == "quad" && poly == "i") {
+    if (degree == 2)
+      return rcp(new Intrepid2::Basis_HGRAD_QUAD_I2_FEM<KokkosExecutionSpace, Scalar, Scalar>());
   }
 
   // Error out
