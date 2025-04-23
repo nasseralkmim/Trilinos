@@ -15,6 +15,9 @@
 #include <sstream>
 #include <algorithm>
 
+#include <Xpetra_StridedMap.hpp>
+#include <Xpetra_StridedMapFactory.hpp>
+
 #include "MueLu_IntrepidPCoarsenFactory_decl.hpp"
 
 #include "MueLu_Level.hpp"
@@ -183,6 +186,9 @@ Teuchos::RCP<Intrepid2::Basis<KokkosExecutionSpace, Scalar, Scalar>> BasisFactor
       return rcp(new Intrepid2::Basis_HGRAD_LINE_C1_FEM<KokkosExecutionSpace, Scalar, Scalar>());
     else
       return rcp(new Intrepid2::Basis_HGRAD_LINE_Cn_FEM<KokkosExecutionSpace, Scalar, Scalar>(degree, Intrepid2::POINTTYPE_EQUISPACED));
+  } else if (deriv == "hgrad" && el == "quad" && poly == "i") {
+    if (degree == 2)
+      return rcp(new Intrepid2::Basis_HGRAD_QUAD_I2_FEM<KokkosExecutionSpace, Scalar, Scalar>());
   }
 
   // Error out
@@ -209,6 +215,9 @@ void IntrepidGetP1NodeInHi(const Teuchos::RCP<Intrepid2::Basis<typename KokkosDe
   if (!rcp_dynamic_cast<Intrepid2::Basis_HGRAD_QUAD_Cn_FEM<KokkosExecutionSpace, Scalar, Scalar>>(hi_basis).is_null()) {
     // HGRAD QUAD Cn: Numbering as per the Kirby convention (straight across, bottom to top)
     lo_node_in_hi.insert(lo_node_in_hi.end(), {0, degree, (degree + 1) * (degree + 1) - 1, degree * (degree + 1)});
+  } else if (!rcp_dynamic_cast<Intrepid2::Basis_HGRAD_QUAD_I2_FEM<KokkosExecutionSpace, Scalar, Scalar>>(hi_basis).is_null()) {
+    // HGRAD QUAD I2 (Serendipity): Assume vertices are the first 4 Nodes.
+    lo_node_in_hi.insert(lo_node_in_hi.end(), {0, 1, 2, 3});
   } else if (!rcp_dynamic_cast<Intrepid2::Basis_HGRAD_LINE_Cn_FEM<KokkosExecutionSpace, Scalar, Scalar>>(hi_basis).is_null()) {
     // HGRAD LINE Cn: Numbering as per the Kirby convention (straight across)
     lo_node_in_hi.insert(lo_node_in_hi.end(), {0, degree});
