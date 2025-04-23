@@ -12,6 +12,7 @@
 
 #include <Xpetra_Matrix.hpp>
 #include <Xpetra_IO.hpp>
+#include <iostream>
 #include <sstream>
 #include <algorithm>
 
@@ -437,13 +438,21 @@ void BuildLoElemToNode(const LOFieldContainer &hi_elemToNode,
 // Generates the lo_columnMap
 // Input:
 //  hi_importer        - Importer from the hi matrix
-//  hi_to_lo_map       - std::vector<LO> of size equal to hi's column map, which contains the lo id each hi idea maps to (or invalid if it doesn't)
-//  lo_DomainMap       - Domain map for the lo matrix
-//  lo_columnMapLength - Number of local columns in the lo column map
+//  hi_importer        - Importer from the hi matrix (DOF-based maps)
+//  hi_to_lo_map       - std::vector<LO> mapping hi *node* LIDs to lo *node* LIDs (or invalid)
+//  lo_domainMap       - Domain map for the lo matrix (DOF-based)
+//  lo_columnMapLength - Number of local DOFs in the lo column map
+//  numDofsPerNode     - Number of DOFs per node in the hi/lo discretizations
 // Output:
-//  lo_columnMap       - Column map of the lower order matrix
+//  lo_columnMap       - Column map of the lower order matrix (DOF-based)
 template <class LocalOrdinal, class GlobalOrdinal, class Node>
-void GenerateColMapFromImport(const Xpetra::Import<LocalOrdinal, GlobalOrdinal, Node> &hi_importer, const std::vector<LocalOrdinal> &hi_to_lo_map, const Xpetra::Map<LocalOrdinal, GlobalOrdinal, Node> &lo_domainMap, const size_t &lo_columnMapLength, RCP<const Xpetra::Map<LocalOrdinal, GlobalOrdinal, Node>> &lo_columnMap) {
+void GenerateColMapFromImport(const Xpetra::Import<LocalOrdinal, GlobalOrdinal, Node> &hi_importer,
+                              const std::vector<LocalOrdinal> &hi_to_lo_map, // Node-based mapping
+                              const Xpetra::Map<LocalOrdinal, GlobalOrdinal, Node> &lo_domainMap, // DOF-based
+                              const size_t &lo_columnMapLength, // Num local DOFs
+                              const size_t numDofsPerNode,      // DOFs per node
+                              RCP<const Xpetra::Map<LocalOrdinal, GlobalOrdinal, Node>> &lo_columnMap) // DOF-based output
+{
   typedef LocalOrdinal LO;
   typedef GlobalOrdinal GO;
   typedef Node NO;
@@ -453,36 +462,61 @@ void GenerateColMapFromImport(const Xpetra::Import<LocalOrdinal, GlobalOrdinal, 
   GO go_invalid = Teuchos::OrdinalTraits<GO>::invalid();
   LO lo_invalid = Teuchos::OrdinalTraits<LO>::invalid();
 
-  RCP<const Map> hi_domainMap = hi_importer.getSourceMap();
-  RCP<const Map> hi_columnMap = hi_importer.getTargetMap();
+  RCP<const Map> hi_domainMap = hi_importer.getSourceMap(); // DOF-based
+  RCP<const Map> hi_columnMap = hi_importer.getTargetMap(); // DOF-based
   // Figure out the GIDs of my non-owned P1 nodes
-  // HOW: We can build a GOVector(domainMap) and fill the values with either invalid() or the P1 domainMap.GID() for that guy.
-  // Then we can use A's importer to get a GOVector(colMap) with that information.
+  // HOW: We build a GOVector(hi_domainMap) and fill the values with either invalid()
+  // or the corresponding lo_domainMap DOF GID.
+  // Then we use A's importer to get a GOVector(hi_columnMap) with that information.
 
-  // NOTE: This assumes rowMap==colMap and [E|T]petra ordering of all the locals first in the colMap
   RCP<GOVector> dvec = Xpetra::VectorFactory<GO, LO, GO, NO>::Build(hi_domainMap);
   {
     ArrayRCP<GO> dvec_data = dvec->getDataNonConst(0);
-    for (size_t i = 0; i < hi_domainMap->getLocalNumElements(); i++) {
-      if (hi_to_lo_map[i] != lo_invalid)
-        dvec_data[i] = lo_domainMap.getGlobalElement(hi_to_lo_map[i]);
-      else
+    size_t num_hi_domain_dofs = hi_domainMap->getLocalNumElements();
+    for (size_t i = 0; i < num_hi_domain_dofs; ++i) { // i is a high-order DOF LID
+      LO hi_node_lid = static_cast<LO>(i / numDofsPerNode);
+      LO dof_offset  = static_cast<LO>(i % numDofsPerNode);
+
+      // Check if the corresponding high-order *node* maps to a low-order node
+      if (hi_node_lid < hi_to_lo_map.size() && hi_to_lo_map[hi_node_lid] != lo_invalid) {
+        LO lo_node_lid = hi_to_lo_map[hi_node_lid];
+        // Calculate the correct low-order *DOF* LID
+        LO lo_dof_lid = lo_node_lid * numDofsPerNode + dof_offset;
+        // Get the GID of the low-order DOF
+        dvec_data[i] = lo_domainMap.getGlobalElement(lo_dof_lid);
+      } else {
         dvec_data[i] = go_invalid;
+      }
     }
   }
 
   RCP<GOVector> cvec = Xpetra::VectorFactory<GO, LO, GO, NO>::Build(hi_columnMap, true);
-  cvec->doImport(*dvec, hi_importer, Xpetra::ADD);
+  cvec->doImport(*dvec, hi_importer, Xpetra::ADD); // Import DOF GIDs
 
-  // Generate the lo_columnMap
-  // HOW: We can use the local hi_to_lo_map from the GID's in cvec to generate the non-contiguous colmap ids.
-  Array<GO> lo_col_data(lo_columnMapLength);
   {
-    ArrayRCP<GO> cvec_data = cvec->getDataNonConst(0);
-    for (size_t i = 0, idx = 0; i < hi_columnMap->getLocalNumElements(); i++) {
-      if (hi_to_lo_map[i] != lo_invalid) {
-        lo_col_data[idx] = cvec_data[i];
-        idx++;
+    // std::cout << "dvec" << std::endl;
+    // dvec->describe(*Teuchos::getFancyOStream(Teuchos::rcpFromRef(std::cout)), Teuchos::VERB_EXTREME);
+    // std::cout << "cvec" << std::endl;
+    // cvec->describe(*Teuchos::getFancyOStream(Teuchos::rcpFromRef(std::cout)), Teuchos::VERB_EXTREME);
+  }
+  
+  // Generate the lo_columnMap GID list
+  // HOW: We iterate through the hi_columnMap (DOFs). For each hi DOF, we find its
+  // corresponding hi node. If that node maps to a lo node via hi_to_lo_map,
+  // we copy the imported GID (which corresponds to the correct lo DOF) from cvec.
+  Array<GO> lo_col_data(lo_columnMapLength);
+  size_t lo_col_idx = 0; // Index for lo_col_data
+  {
+    ArrayRCP<const GO> cvec_data = cvec->getData(0); // Use const version
+    size_t num_hi_column_dofs = hi_columnMap->getLocalNumElements();
+    for (size_t i = 0; i < num_hi_column_dofs; ++i) { // i is a high-order DOF LID
+
+      LO hi_node_lid = static_cast<LO>(i / numDofsPerNode);
+
+      // Check if the corresponding high-order *node* maps to a low-order node
+      if (hi_node_lid < hi_to_lo_map.size() && hi_to_lo_map[hi_node_lid] != lo_invalid) {
+        // The GID in cvec_data[i] is the correct low-order DOF GID (imported from dvec)
+        lo_col_data[lo_col_idx++] = cvec_data[i];
       }
     }
   }
@@ -985,12 +1019,11 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
   if (NumProc == 1)
     P1_colMap = P1_domainMap;
   else {
-    // Include stride information in the column map
-    // The function now receives a node-to-node map in hi_to_lo_map.
-    // P1_nodeIsOwned.size() gives the number of local low-order *nodes*.
-    // We need the number of local low-order *DOFs* for the column map size.
+    // Calculate the required size of the low-order column map (number of local DOFs)
     size_t lo_columnMapLength = P1_nodeIsOwned.size() * numDofsPerNode;
-    MueLuIntrepid::GenerateColMapFromImport<LO, GO, NO>(*Acrs.getCrsGraph()->getImporter(), hi_to_lo_map, *P1_domainMap, lo_columnMapLength, P1_colMap);
+
+    // Call the modified function
+    MueLuIntrepid::GenerateColMapFromImport<LO, GO, NO>(*Acrs.getCrsGraph()->getImporter(), hi_to_lo_map, *P1_domainMap, lo_columnMapLength, numDofsPerNode, P1_colMap);
   }
 
   // Debug print
