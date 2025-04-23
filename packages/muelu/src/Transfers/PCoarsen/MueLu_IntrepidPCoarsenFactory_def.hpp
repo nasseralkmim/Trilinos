@@ -563,6 +563,17 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Generat
                                                                                                                  const Teuchos::RCP<const Map> &hi_map,
                                                                                                                  Teuchos::RCP<Matrix> &P) const {
   typedef SCFieldContainer FC;
+
+  // Check if hi_map is strided and get block size
+  size_t numDofsPerNode = 1;
+  auto strided_hi_map = Teuchos::rcp_dynamic_cast<const StridedMap>(hi_map);
+  if (!strided_hi_map.is_null()) {
+    numDofsPerNode = strided_hi_map->getFixedBlockSize();
+    GetOStream(Runtime0) << "IntrepidPCoarsenFactory::GenerateLinearCoarsening_pn_kirby_to_p1: hi_map is strided with block size " << numDofsPerNode << std::endl;
+  } else {
+     GetOStream(Runtime0) << "IntrepidPCoarsenFactory::GenerateLinearCoarsening_pn_kirby_to_p1: hi_map is not strided. Assuming block size 1." << std::endl;
+  }
+
   // Evaluate the linear basis functions at the Pn nodes
   size_t numFieldsHi     = hi_elemToNode.extent(1);
   size_t numFieldsLo     = lo_basis.getCardinality();
@@ -588,28 +599,48 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Generat
   Teuchos::Array<SC> val(1);
   auto hi_elemToNode_host = Kokkos::create_mirror_view(hi_elemToNode);
   Kokkos::deep_copy(hi_elemToNode_host, hi_elemToNode);
-  for (size_t i = 0; i < Nelem; i++) {
-    for (size_t j = 0; j < numFieldsHi; j++) {
-      LO row_lid = hi_elemToNode_host(i, j);
-      GO row_gid = hi_map->getGlobalElement(row_lid);
-      if (hi_nodeIsOwned[row_lid] && !touched[row_lid]) {
-        for (size_t k = 0; k < numFieldsLo; k++) {
-          // Get the local id in P1's column map
-          LO col_lid = hi_to_lo_map[hi_elemToNode_host(i, lo_node_in_hi[k])];
-          if (col_lid == LOINVALID) continue;
+  for (size_t i = 0; i < Nelem; i++) { // Loop over elements
+    for (size_t j = 0; j < numFieldsHi; j++) { // Loop over hi nodes (fills the rows of P)
+      LO row_lid = hi_elemToNode_host(i, j);  // nodeId
+      // Row now refers to DOF based on the stride information
+      LO row_lid_strided = row_lid * numDofsPerNode;  // dofId
+      GO row_gid         = hi_map->getGlobalElement(row_lid_strided);  // hi_map is dof based (A rows)
+      std::cout << "pid: " << hi_map->getComm()->getRank() << " row_lid (nodeId)" << row_lid << " row_lid_strided (dofId) " << row_lid_strided << std::endl;
 
-          col_gid[0] = {lo_colMap->getGlobalElement(col_lid)};
-          val[0]     = LoValues_at_HiDofs_host(k, j);
+      // hi_nodeIsOwned is based on A's row, so it is dof based (naming is bad)
+      if (hi_nodeIsOwned[row_lid_strided] && !touched[row_lid]) {
 
-          // Skip near-zeros
-          if (Teuchos::ScalarTraits<SC>::magnitude(val[0]) >= effective_zero)
-            P->insertGlobalValues(row_gid, col_gid(), val());
-        }
+        for (size_t k = 0; k < numFieldsLo; k++) { // Loop over low nodes
+          // Loop over dofs (based on stride information)
+          for (size_t dof = 0; dof < numDofsPerNode; dof++) { // Loop over dofs
+            // Get the local id in P1's column map
+            LO col_lid = hi_to_lo_map[hi_elemToNode_host(i, lo_node_in_hi[k])]; // nodeId low
+            if (col_lid == LOINVALID) continue;
+
+            // Convert node id to dof
+            LO col_lid_strided = col_lid * numDofsPerNode + dof;
+
+            col_gid[0] = {lo_colMap->getGlobalElement(col_lid_strided)};
+            val[0]     = LoValues_at_HiDofs_host(k, j);
+            std::cout << "row: " << row_gid + dof << " col: " << col_gid[0] << " = " << val[0] << std::endl;
+
+            // Skip near-zeros
+            if (Teuchos::ScalarTraits<SC>::magnitude(val[0]) >= effective_zero)
+              // Add dof to the row gid
+              P->insertGlobalValues(row_gid + dof, col_gid(), val());
+          } // end of loop over dofs
+        } //end of loop over low nodes (k)
         touched[row_lid] = true;
       }
-    }
-  }
+    } // end of loop over hi nodes (j)
+  } // end of loop over elements (i)
   P->fillComplete(lo_domainMap, hi_map);
+
+  // Debug check
+  {
+    std::cout << "P operator:" << std::endl;
+    P->describe(*Teuchos::getFancyOStream(Teuchos::rcpFromRef(std::cout)), Teuchos::VERB_EXTREME);
+  }
 }
 
 /*********************************************************************************************************/
