@@ -760,7 +760,8 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
   // Get the higher-order element-to-node map
   const Teuchos::RCP<FCi> Pn_elemToNode = Get<Teuchos::RCP<FCi>>(fineLevel, "pcoarsen: element to node map");
 
-  // Calculate node ownership (the quick and dirty way)
+  /*******************/
+  // Calculate DOF ownership (the quick and dirty way)
   // NOTE: This exploits two things:
   //  1) domainMap == rowMap
   //  2) Standard [e|t]petra ordering (namely the local unknowns are always numbered first).
@@ -770,16 +771,82 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
   RCP<const Map> domainMap = A->getDomainMap();
   int NumProc              = rowMap->getComm()->getSize();
   assert(rowMap->isSameAs(*domainMap));
-  std::vector<bool> Pn_nodeIsOwned(colMap->getLocalNumElements(), false);
+  size_t hi_numDofs = colMap->getLocalNumElements();
+  std::vector<bool> Pn_dofIsOwned(hi_numDofs, false);
   LO num_owned_rows = 0;
   for (size_t i = 0; i < rowMap->getLocalNumElements(); i++) {
     if (rowMap->getGlobalElement(i) == colMap->getGlobalElement(i)) {
-      Pn_nodeIsOwned[i] = true;
+      Pn_dofIsOwned[i] = true;
       num_owned_rows++;
     }
   }
 
-  // Used in all cases
+  // Debug print
+  {
+    std::cout << "Row map" << std::endl;
+    rowMap->describe(*Teuchos::getFancyOStream(Teuchos::rcpFromRef(std::cout)), Teuchos::VERB_EXTREME);
+    std::cout << "Col map" << std::endl;
+    colMap->describe(*Teuchos::getFancyOStream(Teuchos::rcpFromRef(std::cout)), Teuchos::VERB_EXTREME);
+    
+    std::cout << "[" << colMap->getComm()->getRank() << "]" << " Pn_dofIsOwned (DOF based) [size: " << hi_numDofs << "] = ";
+      for (size_t i = 0; i < colMap->getLocalNumElements(); i++)
+          std::cout << Pn_dofIsOwned[i] << " ";
+      std::cout << std::endl;
+  }
+
+  // Generate node-based information based on dof-based from system matrix
+  // WHY? node-based allows reuse of BuildLoElemToNode implementation
+  size_t numDofsPerNode = 1;
+  size_t hi_numNodes = hi_numDofs; // Default for non-strided
+  RCP<const StridedMap> stridedColMap; // Use ColMap for node calculation consistency
+
+  if (A->IsView("stridedMaps")) {
+      stridedColMap = Teuchos::rcp_dynamic_cast<const StridedMap>(A->getColMap("stridedMaps"));
+      if (!stridedColMap.is_null()) {
+          numDofsPerNode = stridedColMap->getFixedBlockSize();
+          TEUCHOS_ASSERT(hi_numDofs % numDofsPerNode == 0);
+          hi_numNodes = hi_numDofs / numDofsPerNode;
+          GetOStream(Runtime0) << prefix << "Detected strided map. numDofsPerNode = " << numDofsPerNode << ", hi_numNodes = " << hi_numNodes << std::endl;
+      } else {
+          GetOStream(Warnings) << prefix << "Matrix A has View(\"stridedMaps\") but ColMap is not a StridedMap. Assuming numDofsPerNode = 1." << std::endl;
+          numDofsPerNode = 1;
+          hi_numNodes = hi_numDofs;
+      }
+  } else {
+       GetOStream(Runtime0) << prefix << "Matrix A does not have View(\"stridedMaps\"). Assuming numDofsPerNode = 1." << std::endl;
+  }
+
+  // Node-based ownership: True if the first DOF of the node is owned.
+  std::vector<bool> hi_node_is_owned_vec(hi_numNodes);
+  for (size_t n_lid = 0; n_lid < hi_numNodes; ++n_lid) {
+      hi_node_is_owned_vec[n_lid] = Pn_dofIsOwned[n_lid * numDofsPerNode];
+  }
+
+  // Node-based Dirichlet: True (1) if ALL DOFs for the node are Dirichlet.
+  RCP<Xpetra::Vector<int, LocalOrdinal, GlobalOrdinal, Node>> hi_isDirichletRow, hi_isDirichletCol;
+  Utilities::FindDirichletRowsAndPropagateToCols(A, hi_isDirichletRow, hi_isDirichletCol);
+  auto hi_dof_is_dirichlet_data = hi_isDirichletCol->getData(0); // DOF-based
+
+  std::vector<int> hi_node_is_dirichlet_vec(hi_numNodes, 1); // Assume Dirichlet (1) initially
+  for (size_t d_lid = 0; d_lid < hi_numDofs; ++d_lid) {
+      if (hi_dof_is_dirichlet_data[d_lid] == 0) { // If DOF is NOT Dirichlet (0)
+          size_t n_lid = d_lid / numDofsPerNode;
+          hi_node_is_dirichlet_vec[n_lid] = 0; // Mark the node as NOT Dirichlet (0)
+      }
+  }
+  // // Convert to ArrayRCP for BuildLoElemToNode call
+  Teuchos::ArrayRCP<const int> hi_node_is_dirichlet_arcp = Teuchos::arcp<const int>(hi_node_is_dirichlet_vec.data(), 0, hi_numNodes, false); // Non-owning view
+
+  // Debug print Node ownership & Dirichlet
+  {
+      std::cout << "[" << colMap->getComm()->getRank() << "]" << " hi_node_is_owned_vec [size: " << hi_numNodes << "] = ";
+      for (size_t i = 0; i < hi_numNodes; i++) std::cout << hi_node_is_owned_vec[i] << " ";
+      std::cout << std::endl;
+      std::cout << "[" << colMap->getComm()->getRank() << "]" << " hi_node_is_dirichlet_vec [size: " << hi_numNodes << "] = ";
+      for (size_t i = 0; i < hi_numNodes; i++) std::cout << hi_node_is_dirichlet_vec[i] << " ";
+      std::cout << std::endl;
+  }
+
   FC hi_DofCoords;
   Teuchos::RCP<FCi> P1_elemToNode = rcp(new FCi());
 
@@ -792,10 +859,6 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
 
   // Degree-n variables
   FCi lo_elemToHiRepresentativeNode;
-
-  // Get Dirichlet unknown information
-  RCP<Xpetra::Vector<int, LocalOrdinal, GlobalOrdinal, Node>> hi_isDirichletRow, hi_isDirichletCol;
-  Utilities::FindDirichletRowsAndPropagateToCols(A, hi_isDirichletRow, hi_isDirichletCol);
 
 #if 0
     printf("[%d] isDirichletRow = ",A->getRowMap()->getComm()->getRank());
@@ -814,9 +877,12 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
     // Get reference coordinates and the lo-to-hi injection list for the reference element
     MueLuIntrepid::IntrepidGetP1NodeInHi(hi_basis, lo_node_in_hi, hi_DofCoords);
 
-    // Generate lower-order element-to-node map
-    MueLuIntrepid::BuildLoElemToNode(*Pn_elemToNode, Pn_nodeIsOwned, lo_node_in_hi, hi_isDirichletCol->getData(0), *P1_elemToNode, P1_nodeIsOwned, hi_to_lo_map, P1_numOwnedNodes);
-    assert(hi_to_lo_map.size() == colMap->getLocalNumElements());
+    // Generate lower-order element-to-node map using NODE-based ownership and Dirichlet
+    MueLuIntrepid::BuildLoElemToNode(*Pn_elemToNode, hi_node_is_owned_vec, lo_node_in_hi, hi_node_is_dirichlet_arcp, *P1_elemToNode, P1_nodeIsOwned, hi_to_lo_map, P1_numOwnedNodes);
+
+    // Sanity check: hi_to_lo_map should now have size hi_numNodes
+    TEUCHOS_ASSERT(hi_to_lo_map.size() == hi_numNodes);
+
   } else {
     // Get lo-order candidates
     double threshold = 1e-10;
@@ -826,31 +892,135 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
 
     MueLu::MueLuIntrepid::GenerateRepresentativeBasisNodes<Basis, FC>(*lo_basis, hi_DofCoords, threshold, candidates);
 
-    // Generate the representative nodes
+    // Generate the representative nodes (using original DOF-based colMap for GID lookups)
     MueLu::MueLuIntrepid::GenerateLoNodeInHiViaGIDs(candidates, *Pn_elemToNode, colMap, lo_elemToHiRepresentativeNode);
-    MueLu::MueLuIntrepid::BuildLoElemToNodeViaRepresentatives(*Pn_elemToNode, Pn_nodeIsOwned, lo_elemToHiRepresentativeNode, *P1_elemToNode, P1_nodeIsOwned, hi_to_lo_map, P1_numOwnedNodes);
+    MueLu::MueLuIntrepid::BuildLoElemToNodeViaRepresentatives(*Pn_elemToNode, hi_node_is_owned_vec, lo_elemToHiRepresentativeNode, *P1_elemToNode, P1_nodeIsOwned, hi_to_lo_map, P1_numOwnedNodes);
+
+    // Sanity check: hi_to_lo_map should now have size hi_numNodes
+    TEUCHOS_ASSERT(hi_to_lo_map.size() == hi_numNodes);
   }
   MUELU_LEVEL_SET_IF_REQUESTED_OR_KEPT(coarseLevel, "pcoarsen: element to node map", P1_elemToNode);
 
   /*******************/
-  // Generate the P1_domainMap
+  // Generate the P1_domainMap considering stride information: shape(P) = (num dofs hi, num dofs lo)
   // HOW: Since we know how many each proc has, we can use the non-uniform contiguous map constructor to do the work for us
-  RCP<const Map> P1_domainMap = MapFactory::Build(rowMap->lib(), Teuchos::OrdinalTraits<Xpetra::global_size_t>::invalid(), P1_numOwnedNodes, rowMap->getIndexBase(), rowMap->getComm());
-  MUELU_LEVEL_SET_IF_REQUESTED_OR_KEPT(coarseLevel, "CoarseMap", P1_domainMap);
+  RCP<const Map> P1_domainMap;
+  if (numDofsPerNode > 1) {
+      P1_domainMap = MapFactory::Build(rowMap->lib(), Teuchos::OrdinalTraits<Xpetra::global_size_t>::invalid(), P1_numOwnedNodes * numDofsPerNode, rowMap->getIndexBase(), rowMap->getComm());
+      MUELU_LEVEL_SET_IF_REQUESTED_OR_KEPT(coarseLevel, "CoarseMap", P1_domainMap);
+  } else {
+      P1_domainMap = MapFactory::Build(rowMap->lib(), Teuchos::OrdinalTraits<Xpetra::global_size_t>::invalid(), P1_numOwnedNodes, rowMap->getIndexBase(), rowMap->getComm());
+      MUELU_LEVEL_SET_IF_REQUESTED_OR_KEPT(coarseLevel, "CoarseMap", P1_domainMap);
+  }
+
+  // Debug print
+  {
+    std::cout << "P1 num owned Nodes (used for reserving GID vector): " << P1_numOwnedNodes << std::endl;
+
+    // print P1 elem to node
+    std::cout << "P1 elem to node [BuildLoElemToNode]" << std::endl;
+    {
+      auto P1_elemToNode_host = Kokkos::create_mirror_view(*P1_elemToNode);
+      Kokkos::deep_copy(P1_elemToNode_host, *P1_elemToNode);
+      std::cout << "  Rank: " << P1_elemToNode_host.rank() << ", Extents: ";
+      for(size_t r=0; r<P1_elemToNode_host.rank(); ++r) {
+        std::cout << P1_elemToNode_host.extent(r) << (r == P1_elemToNode_host.rank() - 1 ? "" : ", ");
+      }
+      std::cout << std::endl;
+      // Assuming rank 2 for element to node map
+      if (P1_elemToNode_host.rank() == 2) {
+        for (size_t i = 0; i < P1_elemToNode_host.extent(0); ++i) {
+          std::cout << "  Element " << i << ": ";
+          for (size_t j = 0; j < P1_elemToNode_host.extent(1); ++j) {
+            std::cout << P1_elemToNode_host(i, j) << " ";
+          }
+          std::cout << std::endl;
+        }
+      }
+    }
+    
+    std::cout << "P1 domain map" << std::endl;
+    P1_domainMap->describe(*Teuchos::getFancyOStream(Teuchos::rcpFromRef(std::cout)), Teuchos::VERB_EXTREME);
+
+    std::cout << "["<< P1_domainMap->getComm()->getRank() << "]" << "hi_to_lo_map: ";
+    for (const auto &val : hi_to_lo_map) {
+      std::cout << val << " ";
+    }
+    std::cout << std::endl;
+  }
 
   // Generate the P1_columnMap
   RCP<const Map> P1_colMap;
   if (NumProc == 1)
     P1_colMap = P1_domainMap;
-  else
-    MueLuIntrepid::GenerateColMapFromImport<LO, GO, NO>(*Acrs.getCrsGraph()->getImporter(), hi_to_lo_map, *P1_domainMap, P1_nodeIsOwned.size(), P1_colMap);
+  else {
+    // Include stride information in the column map
+    // The function now receives a node-to-node map in hi_to_lo_map.
+    // P1_nodeIsOwned.size() gives the number of local low-order *nodes*.
+    // We need the number of local low-order *DOFs* for the column map size.
+    size_t lo_columnMapLength = P1_nodeIsOwned.size() * numDofsPerNode;
+    MueLuIntrepid::GenerateColMapFromImport<LO, GO, NO>(*Acrs.getCrsGraph()->getImporter(), hi_to_lo_map, *P1_domainMap, lo_columnMapLength, P1_colMap);
+  }
+
+  // Debug print
+  {
+    std::cout << "P1 col map" << std::endl;
+    P1_colMap->describe(*Teuchos::getFancyOStream(Teuchos::rcpFromRef(std::cout)), Teuchos::VERB_EXTREME);
+    
+  }
+  
+  /*******************/
+  // Generate the coarsening operator P
+  // Pass the original DOF-based ownership Pn_dofIsOwned to the generation functions,
+  // as they iterate through high-order DOFs and need the ownership of the specific DOF being processed.
+  RCP<const Map> hi_rowMapForP = A->IsView("stridedMaps") ? A->getRowMap("stridedMaps") : A->getRowMap();
+
+  if (lo_degree == 1) {
+    GenerateLinearCoarsening_pn_kirby_to_p1(*Pn_elemToNode, Pn_dofIsOwned, hi_DofCoords, lo_node_in_hi, *lo_basis, hi_to_lo_map, P1_colMap, P1_domainMap, hi_rowMapForP, finalP);
+  } else {
+      GenerateLinearCoarsening_pn_kirby_to_pm(*Pn_elemToNode, Pn_dofIsOwned, hi_DofCoords, lo_elemToHiRepresentativeNode, *lo_basis, hi_to_lo_map, P1_colMap, P1_domainMap, hi_rowMapForP, finalP);               
+  }
+
 
   /*******************/
-  // Generate the coarsening
-  if (lo_degree == 1)
-    GenerateLinearCoarsening_pn_kirby_to_p1(*Pn_elemToNode, Pn_nodeIsOwned, hi_DofCoords, lo_node_in_hi, *lo_basis, hi_to_lo_map, P1_colMap, P1_domainMap, A->getRowMap(), finalP);
-  else
-    GenerateLinearCoarsening_pn_kirby_to_pm(*Pn_elemToNode, Pn_nodeIsOwned, hi_DofCoords, lo_elemToHiRepresentativeNode, *lo_basis, hi_to_lo_map, P1_colMap, P1_domainMap, A->getRowMap(), finalP);
+  // Generate strided maps if input A has them, needed for BlockedPFactory
+  if (A->IsView("stridedMaps")) {
+    std::cout << "Input matrix A has strided map. Propagating striding information." << std::endl;
+
+    auto stridedRowMap = Teuchos::rcp_dynamic_cast<const StridedMap>(A->getRowMap("stridedMaps"));
+    std::vector<size_t> stridingData = stridedRowMap->getStridingData();
+    GO indexBaseCoarse               = P1_domainMap->getIndexBase();
+    LO stridedBlockId                = -1; // Full map strided block ID is -1
+    GO offset                        = stridedRowMap->getOffset();
+    RCP<const Teuchos::Comm<int> > comm = A->getRowMap()->getComm();
+    Xpetra::UnderlyingLib lib           = A->getRowMap()->lib();
+
+
+    // Build strided P1 column map 
+    ArrayView<const GO> P1_colMapGIDs = P1_colMap->getLocalElementList();
+    // Debug prints
+    {
+      std::cout << "stridingData: ";
+      for (const auto &val : stridingData) {
+        std::cout << val << " ";
+      }
+      std::cout << std::endl;
+
+      std::cout << "indexBaseCoarse: " << indexBaseCoarse << std::endl;
+
+      // P1 colMap GIDs
+      std::cout << "P1 colMap GIDs: ";
+      for (const auto &val : P1_colMapGIDs) {
+        std::cout << val << " ";
+      }
+      std::cout << std::endl;
+    }
+    auto strided_P1_colMapGIDs = StridedMapFactory::Build(
+                                                   lib, Teuchos::OrdinalTraits<Xpetra::global_size_t>::invalid(), P1_colMapGIDs,
+                                                   indexBaseCoarse, stridingData, comm, stridedBlockId, offset);
+
+    finalP->CreateView("stridedMaps", stridedRowMap, strided_P1_colMapGIDs);
+  }
 
   /*******************/
   // Zero out the Dirichlet rows in P
