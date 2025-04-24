@@ -639,7 +639,7 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Generat
       // Row now refers to DOF based on the stride information
       LO row_lid_strided = row_lid * numDofsPerNode;  // dofId
       GO row_gid         = hi_map->getGlobalElement(row_lid_strided);  // hi_map is dof based (A rows)
-      std::cout << "pid: " << hi_map->getComm()->getRank() << " row_lid (nodeId)" << row_lid << " row_lid_strided (dofId) " << row_lid_strided << std::endl;
+      // std::cout << "pid: " << hi_map->getComm()->getRank() << " row_lid (nodeId)" << row_lid << " row_lid_strided (dofId) " << row_lid_strided << std::endl;
 
       // hi_nodeIsOwned is based on A's row, so it is dof based (naming is bad)
       if (hi_nodeIsOwned[row_lid_strided] && !touched[row_lid]) {
@@ -648,7 +648,7 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Generat
           // Loop over dofs (based on stride information)
           for (size_t dof = 0; dof < numDofsPerNode; dof++) { // Loop over dofs
             // Get the local id in P1's column map
-            LO col_lid = hi_to_lo_map[hi_elemToNode_host(i, lo_node_in_hi[k])]; // nodeId low
+            LO col_lid = hi_to_lo_map[hi_elemToNode_host(i, lo_node_in_hi[k])];
             if (col_lid == LOINVALID) continue;
 
             // Convert node id to dof
@@ -656,7 +656,15 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Generat
 
             col_gid[0] = {lo_colMap->getGlobalElement(col_lid_strided)};
             val[0]     = LoValues_at_HiDofs_host(k, j);
-            std::cout << "row: " << row_gid + dof << " col: " << col_gid[0] << " = " << val[0] << std::endl;
+            // Debug print
+            {
+              // std::cout << "pid: " << hi_map->getComm()->getRank()
+              //   << "row: " << row_gid + dof
+              //   << " -> hi node lid: " << hi_elemToNode_host(i, lo_node_in_hi[k])
+              //   << " -> lo node lid: (hi2lo map) " << hi_to_lo_map[hi_elemToNode_host(i, lo_node_in_hi[k])]
+              //   << " -> col_lid (lo node lid) " << col_lid
+              //   << " col: " << col_gid[0] << " = " << val[0] << std::endl;
+            }
 
             // Skip near-zeros
             if (Teuchos::ScalarTraits<SC>::magnitude(val[0]) >= effective_zero)
@@ -672,8 +680,8 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Generat
 
   // Debug check
   {
-    std::cout << "P operator:" << std::endl;
-    P->describe(*Teuchos::getFancyOStream(Teuchos::rcpFromRef(std::cout)), Teuchos::VERB_EXTREME);
+    // std::cout << "P operator:" << std::endl;
+    // P->describe(*Teuchos::getFancyOStream(Teuchos::rcpFromRef(std::cout)), Teuchos::VERB_EXTREME);
   }
 }
 
@@ -848,15 +856,15 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
 
   // Debug print
   {
-    std::cout << "Row map" << std::endl;
-    rowMap->describe(*Teuchos::getFancyOStream(Teuchos::rcpFromRef(std::cout)), Teuchos::VERB_EXTREME);
-    std::cout << "Col map" << std::endl;
-    colMap->describe(*Teuchos::getFancyOStream(Teuchos::rcpFromRef(std::cout)), Teuchos::VERB_EXTREME);
+    // std::cout << "Row map" << std::endl;
+    // rowMap->describe(*Teuchos::getFancyOStream(Teuchos::rcpFromRef(std::cout)), Teuchos::VERB_EXTREME);
+    // std::cout << "Col map" << std::endl;
+    // colMap->describe(*Teuchos::getFancyOStream(Teuchos::rcpFromRef(std::cout)), Teuchos::VERB_EXTREME);
     
-    std::cout << "[" << colMap->getComm()->getRank() << "]" << " Pn_dofIsOwned (DOF based) [size: " << hi_numDofs << "] = ";
-      for (size_t i = 0; i < colMap->getLocalNumElements(); i++)
-          std::cout << Pn_dofIsOwned[i] << " ";
-      std::cout << std::endl;
+    // std::cout << "[" << colMap->getComm()->getRank() << "]" << " Pn_dofIsOwned (DOF based) [size: " << hi_numDofs << "] = ";
+    //   for (size_t i = 0; i < colMap->getLocalNumElements(); i++)
+    //       std::cout << Pn_dofIsOwned[i] << " ";
+    //   std::cout << std::endl;
   }
 
   // Generate node-based information based on dof-based from system matrix
@@ -904,12 +912,12 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
 
   // Debug print Node ownership & Dirichlet
   {
-      std::cout << "[" << colMap->getComm()->getRank() << "]" << " hi_node_is_owned_vec [size: " << hi_numNodes << "] = ";
-      for (size_t i = 0; i < hi_numNodes; i++) std::cout << hi_node_is_owned_vec[i] << " ";
-      std::cout << std::endl;
-      std::cout << "[" << colMap->getComm()->getRank() << "]" << " hi_node_is_dirichlet_vec [size: " << hi_numNodes << "] = ";
-      for (size_t i = 0; i < hi_numNodes; i++) std::cout << hi_node_is_dirichlet_vec[i] << " ";
-      std::cout << std::endl;
+      // std::cout << "[" << colMap->getComm()->getRank() << "]" << " hi_node_is_owned_vec [size: " << hi_numNodes << "] = ";
+      // for (size_t i = 0; i < hi_numNodes; i++) std::cout << hi_node_is_owned_vec[i] << " ";
+      // std::cout << std::endl;
+      // std::cout << "[" << colMap->getComm()->getRank() << "]" << " hi_node_is_dirichlet_vec [size: " << hi_numNodes << "] = ";
+      // for (size_t i = 0; i < hi_numNodes; i++) std::cout << hi_node_is_dirichlet_vec[i] << " ";
+      // std::cout << std::endl;
   }
 
   FC hi_DofCoords;
@@ -980,38 +988,44 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
 
   // Debug print
   {
-    std::cout << "P1 num owned Nodes (used for reserving GID vector): " << P1_numOwnedNodes << std::endl;
+  //   std::cout << "P1 num owned Nodes (used for reserving GID vector): " << P1_numOwnedNodes << std::endl;
 
-    // print P1 elem to node
-    std::cout << "P1 elem to node [BuildLoElemToNode]" << std::endl;
-    {
-      auto P1_elemToNode_host = Kokkos::create_mirror_view(*P1_elemToNode);
-      Kokkos::deep_copy(P1_elemToNode_host, *P1_elemToNode);
-      std::cout << "  Rank: " << P1_elemToNode_host.rank() << ", Extents: ";
-      for(size_t r=0; r<P1_elemToNode_host.rank(); ++r) {
-        std::cout << P1_elemToNode_host.extent(r) << (r == P1_elemToNode_host.rank() - 1 ? "" : ", ");
-      }
-      std::cout << std::endl;
-      // Assuming rank 2 for element to node map
-      if (P1_elemToNode_host.rank() == 2) {
-        for (size_t i = 0; i < P1_elemToNode_host.extent(0); ++i) {
-          std::cout << "  Element " << i << ": ";
-          for (size_t j = 0; j < P1_elemToNode_host.extent(1); ++j) {
-            std::cout << P1_elemToNode_host(i, j) << " ";
-          }
-          std::cout << std::endl;
-        }
-      }
-    }
+  //   // print lo_node_in_hi
+  //   std::cout << "["<< P1_domainMap->getComm()->getRank() << "]" << "lo_node_in_hi [BuildLoElemToNode]" << std::endl;
+  //   for (size_t i = 0; i < lo_node_in_hi.size(); ++i) {
+  //     std::cout << "  Node " << i << ": " << lo_node_in_hi[i] << std::endl;
+  //   }
+        
+  //   // print P1 elem to node
+  //   std::cout << "P1 elem to node [BuildLoElemToNode]" << std::endl;
+  //   {
+  //     auto P1_elemToNode_host = Kokkos::create_mirror_view(*P1_elemToNode);
+  //     Kokkos::deep_copy(P1_elemToNode_host, *P1_elemToNode);
+  //     std::cout << "  Rank: " << P1_elemToNode_host.rank() << ", Extents: ";
+  //     for(size_t r=0; r<P1_elemToNode_host.rank(); ++r) {
+  //       std::cout << P1_elemToNode_host.extent(r) << (r == P1_elemToNode_host.rank() - 1 ? "" : ", ");
+  //     }
+  //     std::cout << std::endl;
+  //     // Assuming rank 2 for element to node map
+  //     if (P1_elemToNode_host.rank() == 2) {
+  //       for (size_t i = 0; i < P1_elemToNode_host.extent(0); ++i) {
+  //         std::cout << "  Element " << i << ": ";
+  //         for (size_t j = 0; j < P1_elemToNode_host.extent(1); ++j) {
+  //           std::cout << P1_elemToNode_host(i, j) << " ";
+  //         }
+  //         std::cout << std::endl;
+  //       }
+  //     }
+  //   }
     
-    std::cout << "P1 domain map" << std::endl;
-    P1_domainMap->describe(*Teuchos::getFancyOStream(Teuchos::rcpFromRef(std::cout)), Teuchos::VERB_EXTREME);
+  //   std::cout << "P1 domain map" << std::endl;
+  //   P1_domainMap->describe(*Teuchos::getFancyOStream(Teuchos::rcpFromRef(std::cout)), Teuchos::VERB_EXTREME);
 
-    std::cout << "["<< P1_domainMap->getComm()->getRank() << "]" << "hi_to_lo_map: ";
-    for (const auto &val : hi_to_lo_map) {
-      std::cout << val << " ";
-    }
-    std::cout << std::endl;
+  //   std::cout << "["<< P1_domainMap->getComm()->getRank() << "]" << "hi_to_lo_map: ";
+  //   for (const auto &val : hi_to_lo_map) {
+  //     std::cout << val << " ";
+  //   }
+  //   std::cout << std::endl;
   }
 
   // Generate the P1_columnMap
@@ -1028,9 +1042,8 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
 
   // Debug print
   {
-    std::cout << "P1 col map" << std::endl;
-    P1_colMap->describe(*Teuchos::getFancyOStream(Teuchos::rcpFromRef(std::cout)), Teuchos::VERB_EXTREME);
-    
+    // std::cout << "P1 col map" << std::endl;
+    // P1_colMap->describe(*Teuchos::getFancyOStream(Teuchos::rcpFromRef(std::cout)), Teuchos::VERB_EXTREME);
   }
   
   /*******************/
@@ -1049,7 +1062,7 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
   /*******************/
   // Generate strided maps if input A has them, needed for BlockedPFactory
   if (A->IsView("stridedMaps")) {
-    std::cout << "Input matrix A has strided map. Propagating striding information." << std::endl;
+    // std::cout << "Input matrix A has strided map. Propagating striding information." << std::endl;
 
     auto stridedRowMap = Teuchos::rcp_dynamic_cast<const StridedMap>(A->getRowMap("stridedMaps"));
     std::vector<size_t> stridingData = stridedRowMap->getStridingData();
@@ -1064,20 +1077,20 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
     ArrayView<const GO> P1_colMapGIDs = P1_colMap->getLocalElementList();
     // Debug prints
     {
-      std::cout << "stridingData: ";
-      for (const auto &val : stridingData) {
-        std::cout << val << " ";
-      }
-      std::cout << std::endl;
+      // std::cout << "stridingData: ";
+      // for (const auto &val : stridingData) {
+      //   std::cout << val << " ";
+      // }
+      // std::cout << std::endl;
 
-      std::cout << "indexBaseCoarse: " << indexBaseCoarse << std::endl;
+      // std::cout << "indexBaseCoarse: " << indexBaseCoarse << std::endl;
 
-      // P1 colMap GIDs
-      std::cout << "P1 colMap GIDs: ";
-      for (const auto &val : P1_colMapGIDs) {
-        std::cout << val << " ";
-      }
-      std::cout << std::endl;
+      // // P1 colMap GIDs
+      // std::cout << "P1 colMap GIDs: ";
+      // for (const auto &val : P1_colMapGIDs) {
+      //   std::cout << val << " ";
+      // }
+      // std::cout << std::endl;
     }
     auto strided_P1_colMapGIDs = StridedMapFactory::Build(
                                                    lib, Teuchos::OrdinalTraits<Xpetra::global_size_t>::invalid(), P1_colMapGIDs,
