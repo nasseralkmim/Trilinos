@@ -31,9 +31,9 @@
 
 // Intrepid Headers
 
-// Intrepid_HGRAD_HEX_C1_FEM.hpp
-// Intrepid_HGRAD_HEX_C2_FEM.hpp
-// Intrepid_HGRAD_HEX_Cn_FEM.hpp
+#include "Intrepid2_HGRAD_HEX_C1_FEM.hpp"
+// #include "Intrepid2_HGRAD_HEX_C2_FEM.hpp"
+#include "Intrepid2_HGRAD_HEX_Cn_FEM.hpp"
 // Intrepid_HGRAD_HEX_I2_FEM.hpp
 #include "Intrepid2_HGRAD_LINE_C1_FEM.hpp"
 #include "Intrepid2_HGRAD_LINE_Cn_FEM.hpp"
@@ -182,6 +182,11 @@ Teuchos::RCP<Intrepid2::Basis<KokkosExecutionSpace, Scalar, Scalar>> BasisFactor
       return rcp(new Intrepid2::Basis_HGRAD_QUAD_C1_FEM<KokkosExecutionSpace, Scalar, Scalar>());
     else
       return rcp(new Intrepid2::Basis_HGRAD_QUAD_Cn_FEM<KokkosExecutionSpace, Scalar, Scalar>(degree, Intrepid2::POINTTYPE_EQUISPACED));
+  } else if (deriv == "hgrad" && el == "hex" && poly == "c") {
+    if (degree == 1)
+      return rcp(new Intrepid2::Basis_HGRAD_HEX_C1_FEM<KokkosExecutionSpace, Scalar, Scalar>());
+    else
+      return rcp(new Intrepid2::Basis_HGRAD_HEX_Cn_FEM<KokkosExecutionSpace, Scalar, Scalar>(degree, Intrepid2::POINTTYPE_EQUISPACED));
   } else if (deriv == "hgrad" && el == "line" && poly == "c") {
     if (degree == 1)
       return rcp(new Intrepid2::Basis_HGRAD_LINE_C1_FEM<KokkosExecutionSpace, Scalar, Scalar>());
@@ -190,6 +195,9 @@ Teuchos::RCP<Intrepid2::Basis<KokkosExecutionSpace, Scalar, Scalar>> BasisFactor
   } else if (deriv == "hgrad" && el == "quad" && poly == "i") {
     if (degree == 2)
       return rcp(new Intrepid2::Basis_HGRAD_QUAD_I2_FEM<KokkosExecutionSpace, Scalar, Scalar>());
+  } else if (deriv == "hgrad" && el == "hex" && poly == "i") {
+    if (degree == 2)
+      return rcp(new Intrepid2::Basis_HGRAD_HEX_I2_FEM<KokkosExecutionSpace, Scalar, Scalar>());
   }
 
   // Error out
@@ -219,6 +227,12 @@ void IntrepidGetP1NodeInHi(const Teuchos::RCP<Intrepid2::Basis<typename KokkosDe
   } else if (!rcp_dynamic_cast<Intrepid2::Basis_HGRAD_QUAD_I2_FEM<KokkosExecutionSpace, Scalar, Scalar>>(hi_basis).is_null()) {
     // HGRAD QUAD I2 (Serendipity): Assume vertices are the first 4 Nodes.
     lo_node_in_hi.insert(lo_node_in_hi.end(), {0, 1, 2, 3});
+  } else if (!rcp_dynamic_cast<Intrepid2::Basis_HGRAD_HEX_C1_FEM<KokkosExecutionSpace, Scalar, Scalar>>(hi_basis).is_null()) {
+    // HGRAD HEX C1: Vertices are the first 8 nodes.
+    lo_node_in_hi.insert(lo_node_in_hi.end(), {0, 1, 2, 3, 4, 5, 6, 7});
+  } else if (!rcp_dynamic_cast<Intrepid2::Basis_HGRAD_HEX_I2_FEM<KokkosExecutionSpace, Scalar, Scalar>>(hi_basis).is_null()) {
+    // HGRAD HEX I2 (Serendipity): Assume vertices are the first 8 Nodes.
+    lo_node_in_hi.insert(lo_node_in_hi.end(), {0, 1, 2, 3, 4, 5, 6, 7});
   } else if (!rcp_dynamic_cast<Intrepid2::Basis_HGRAD_LINE_Cn_FEM<KokkosExecutionSpace, Scalar, Scalar>>(hi_basis).is_null()) {
     // HGRAD LINE Cn: Numbering as per the Kirby convention (straight across)
     lo_node_in_hi.insert(lo_node_in_hi.end(), {0, degree});
