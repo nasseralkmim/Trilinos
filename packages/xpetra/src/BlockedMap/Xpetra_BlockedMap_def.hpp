@@ -84,7 +84,7 @@ BlockedMap<LocalOrdinal, GlobalOrdinal, Node>::
       // std::sort(subMapGids.begin(), subMapGids.end());
       // subMapGids.erase(std::unique(subMapGids.begin(), subMapGids.end()), subMapGids.end());
 
-      Teuchos::ArrayView<GlobalOrdinal> subMapGidsView(&subMapGids[0], subMapGids.size());
+      Teuchos::ArrayView<GlobalOrdinal> subMapGidsView(subMapGids.data(), subMapGids.size());
 
       Teuchos::RCP<Map> mySubMap = Xpetra::MapFactory<LocalOrdinal, GlobalOrdinal, Node>::Build(
           maps[v]->lib(), INVALID, subMapGidsView, maps[v]->getIndexBase(), maps[v]->getComm());
@@ -98,7 +98,7 @@ BlockedMap<LocalOrdinal, GlobalOrdinal, Node>::
     // std::sort(fullMapGids.begin(), fullMapGids.end());
     // fullMapGids.erase(std::unique(fullMapGids.begin(), fullMapGids.end()), fullMapGids.end());
 
-    Teuchos::ArrayView<GlobalOrdinal> fullMapGidsView(&fullMapGids[0], fullMapGids.size());
+    Teuchos::ArrayView<GlobalOrdinal> fullMapGidsView(fullMapGids.data(), fullMapGids.size());
 
     fullmap_ = Xpetra::MapFactory<LocalOrdinal, GlobalOrdinal, Node>::Build(
         fullmap->lib(), INVALID, fullMapGidsView, fullmap->getIndexBase(), fullmap->getComm());
@@ -571,7 +571,7 @@ BlockedMap<LocalOrdinal, GlobalOrdinal, Node>::
   const GlobalOrdinal INVALID = Teuchos::OrdinalTraits<Xpetra::global_size_t>::invalid();
   // std::sort(gids.begin(), gids.end());
   // gids.erase(std::unique(gids.begin(), gids.end()), gids.end());
-  Teuchos::ArrayView<GlobalOrdinal> gidsView(&gids[0], gids.size());
+  Teuchos::ArrayView<GlobalOrdinal> gidsView(gids.data(), gids.size());
 
   Teuchos::RCP<Xpetra::Map<LocalOrdinal, GlobalOrdinal, Node>> fullMap = Xpetra::MapFactory<LocalOrdinal, GlobalOrdinal, Node>::
       Build(subMaps[0]->lib(), INVALID, gidsView, subMaps[0]->getIndexBase(), subMaps[0]->getComm());
