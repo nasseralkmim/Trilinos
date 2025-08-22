@@ -104,6 +104,7 @@ void getValidParameters(Teuchos::ParameterList &params) {
   params.set("relaxation: mtgs cluster size", 1);
   params.set("relaxation: mtgs coloring algorithm", "Default");
   params.set("relaxation: long row threshold", 0);
+  params.set("relaxation: fix tiny diagonal entries", false);
 
   // Ifpack2_SPARSKIT.cpp
   // ap 25 May 2016: all SPARSKIT for backwards compatibility ONLY
