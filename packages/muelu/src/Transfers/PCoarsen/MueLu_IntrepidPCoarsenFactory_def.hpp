@@ -530,10 +530,14 @@ void GenerateColMapFromImport(const Xpetra::Import<LocalOrdinal, GlobalOrdinal, 
       // Check if the corresponding high-order *node* maps to a low-order node
       if (hi_node_lid < hi_to_lo_map.size() && hi_to_lo_map[hi_node_lid] != lo_invalid) {
         // The GID in cvec_data[i] is the correct low-order DOF GID (imported from dvec)
-        lo_col_data[lo_col_idx++] = cvec_data[i];
+        // We must check for invalid GIDs, as they can be returned for nodes
+        // that are owned by other processes and are not part of the coarse grid.
+        if (cvec_data[i] != go_invalid)
+          lo_col_data[lo_col_idx++] = cvec_data[i];
       }
     }
   }
+  lo_col_data.resize(lo_col_idx);
 
   lo_columnMap = Xpetra::MapFactory<LO, GO, NO>::Build(lo_domainMap.lib(), Teuchos::OrdinalTraits<Xpetra::global_size_t>::invalid(), lo_col_data(), lo_domainMap.getIndexBase(), lo_domainMap.getComm());
 }
@@ -669,6 +673,7 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::Generat
             LO col_lid_strided = col_lid * numDofsPerNode + dof;
 
             col_gid[0] = {lo_colMap->getGlobalElement(col_lid_strided)};
+            if (col_gid[0] == Teuchos::OrdinalTraits<GlobalOrdinal>::invalid()) continue;
             val[0]     = LoValues_at_HiDofs_host(k, j);
             // Debug print
             {
