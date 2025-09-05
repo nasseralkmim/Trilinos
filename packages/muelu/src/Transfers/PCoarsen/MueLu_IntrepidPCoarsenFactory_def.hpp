@@ -854,6 +854,8 @@ void IntrepidPCoarsenFactory<Scalar, LocalOrdinal, GlobalOrdinal, Node>::BuildP(
   //  2) Standard [e|t]petra ordering (namely the local unknowns are always numbered first).
   // This routine does not work in general.
   RCP<const Map> rowMap    = A->getRowMap();
+  if (rowMap->getLocalNumElements() > 0 && (Pn_elemToNode.is_null() || Pn_elemToNode->extent(0) == 0))
+    TEUCHOS_TEST_FOR_EXCEPTION(true, std::runtime_error, prefix << "This rank owns " << rowMap->getLocalNumElements() << " DOFs but no elements, p-coarsening needs elements to proceed.");
   RCP<const Map> colMap    = Acrs.getColMap();
   RCP<const Map> domainMap = A->getDomainMap();
   int NumProc              = rowMap->getComm()->getSize();
